@@ -58,6 +58,12 @@ const routes = [
         meta: { title: "Detail Survey" },
       },
       {
+        path: "karyawan",
+        name: "admin-manage-karyawan",
+        component: () => import("../adminManageKaryawan.vue"),
+        meta: { title: "Manage Pegawai" },
+      },
+      {
         path: "hapus-gambar",
         name: "admin-manage-images",
         component: () => import("../adminManageImages.vue"),

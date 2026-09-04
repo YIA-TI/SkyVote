@@ -253,7 +253,9 @@ const autocompleteRef = ref(null);
 const suggestions = computed(() => {
   const term = nameQuery.value.trim().toLowerCase();
   if (!term) return [];
-  return store.employees.filter((e) => e.nama.toLowerCase().includes(term)).slice(0, 6);
+  return store.employees
+    .filter((e) => e.isActive && e.nama.toLowerCase().includes(term))
+    .slice(0, 6);
 });
 
 function handleNameInput() {

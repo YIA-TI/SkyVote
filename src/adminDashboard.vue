@@ -181,7 +181,7 @@ const shortLabels = {
 const divisionRows = computed(() =>
   ORG_PARENT_KEYS.map((key) => {
     const deptSet = new Set(ORG_CHILDREN_BY_PARENT.get(key) ?? []);
-    const employeeCount = store.employees.filter((e) => deptSet.has(e.unitKerja)).length;
+    const employeeCount = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja)).length;
     const target = employeeCount * maxPengisian.value;
     const voting = filteredSubmissions.value.filter((s) => deptSet.has(s.departemen)).length;
     return { key, shortLabel: shortLabels[key] ?? key, target, voting };
@@ -209,7 +209,7 @@ const gridlines = [0, 25, 50, 75, 100];
 
 const departmentRows = computed(() =>
   ORG_PARENT_KEYS.flatMap((parentKey) => ORG_CHILDREN_BY_PARENT.get(parentKey) ?? []).map((dept) => {
-    const employeeCount = store.employees.filter((e) => e.unitKerja === dept).length;
+    const employeeCount = store.employees.filter((e) => e.isActive && e.unitKerja === dept).length;
     const target = employeeCount * maxPengisian.value;
     const voting = filteredSubmissions.value.filter((s) => s.departemen === dept).length;
     return { key: dept, shortLabel: shortDeptName(dept), target, voting };

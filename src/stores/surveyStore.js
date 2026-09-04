@@ -57,9 +57,20 @@ function mapSubmission(row) {
 function mapEmployee(row) {
   return {
     id: row.id,
+    nip: row.nip ?? "",
     nama: row.nama,
     unitKerja: row.unit_kerja,
     jenisPegawai: row.jenis_pegawai,
+    isActive: row.is_active ?? true,
+  };
+}
+
+function toEmployeeRow({ nip, nama, unitKerja, jenisPegawai }) {
+  return {
+    nip: nip ? nip.trim() : null,
+    nama: nama.trim(),
+    unit_kerja: unitKerja,
+    jenis_pegawai: jenisPegawai,
   };
 }
 
@@ -129,8 +140,9 @@ export const useSurveyStore = defineStore("survey", {
     participationGroupedBy(state) {
       return (getKey, submissionsList, allKeys, maxPengisian = 1) => {
         const list = submissionsList ?? state.submissions;
-        const totalOrganik = state.employees.filter((e) => e.jenisPegawai === "Organik").length;
-        const totalNonOrganik = state.employees.length - totalOrganik;
+        const activeEmployees = state.employees.filter((e) => e.isActive);
+        const totalOrganik = activeEmployees.filter((e) => e.jenisPegawai === "Organik").length;
+        const totalNonOrganik = activeEmployees.length - totalOrganik;
         const totalPegawai = totalOrganik + totalNonOrganik;
         const targetOrganik = totalOrganik * maxPengisian;
         const targetNonOrganik = totalNonOrganik * maxPengisian;
@@ -286,6 +298,51 @@ export const useSurveyStore = defineStore("survey", {
       if (error) throw error;
       this.surveys = this.surveys.filter((s) => s.id !== surveyId);
       this.submissions = this.submissions.filter((s) => s.surveyId !== surveyId);
+    },
+
+    async addEmployee(payload) {
+      const { data, error } = await supabase
+        .from("employees")
+        .insert(toEmployeeRow(payload))
+        .select()
+        .single();
+      if (error) throw error;
+      const employee = mapEmployee(data);
+      this.employees.push(employee);
+      this.employees.sort((a, b) => a.nama.localeCompare(b.nama));
+      return employee;
+    },
+
+    async updateEmployee(employeeId, payload) {
+      const { data, error } = await supabase
+        .from("employees")
+        .update(toEmployeeRow(payload))
+        .eq("id", employeeId)
+        .select()
+        .single();
+      if (error) throw error;
+      const employee = mapEmployee(data);
+      const index = this.employees.findIndex((e) => e.id === employeeId);
+      if (index !== -1) this.employees[index] = employee;
+      return employee;
+    },
+
+    // "Deleting" an employee is a soft delete: their row and all past
+    // submissions stay intact for reporting, they're just flipped to
+    // inactive so the public survey form's name search and the "belum
+    // mengisi survei" list stop offering them.
+    async setEmployeeActive(employeeId, isActive) {
+      const { data, error } = await supabase
+        .from("employees")
+        .update({ is_active: isActive })
+        .eq("id", employeeId)
+        .select()
+        .single();
+      if (error) throw error;
+      const employee = mapEmployee(data);
+      const index = this.employees.findIndex((e) => e.id === employeeId);
+      if (index !== -1) this.employees[index] = employee;
+      return employee;
     },
 
     async addSubmission({ nama, tanggal, surveyId, jenisPegawai, departemen, file }) {

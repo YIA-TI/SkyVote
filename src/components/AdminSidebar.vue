@@ -70,6 +70,27 @@
         Reports
       </RouterLink>
 
+      <RouterLink to="/admin/karyawan" class="nav-item" active-class="active" @click="$emit('close')">
+        <span class="nav-icon-box">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+            <circle cx="7.5" cy="6" r="2.6" stroke="currentColor" stroke-width="1.6" />
+            <path
+              d="M2.5 16.2c0-2.9 2.2-5 5-5s5 2.1 5 5"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+            <path
+              d="M13 6.2a2.6 2.6 0 1 1 1.8 4.5M14.5 11.3c1.8.4 3 1.9 3 4.1"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+        </span>
+        Manage Pegawai
+      </RouterLink>
+
       <RouterLink to="/admin/hapus-gambar" class="nav-item" active-class="active" @click="$emit('close')">
         <span class="nav-icon-box">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">

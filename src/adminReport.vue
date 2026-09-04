@@ -4,7 +4,7 @@
       <div>
         <h1 class="page-title">Laporan Hasil Survei</h1>
         <p class="page-subtitle">
-          Tinjauan komprehensif mengenai metrik survei karyawan, tingkat partisipasi, dan tren
+          Tinjauan komprehensif mengenai metrik survei pegawai, tingkat partisipasi, dan tren
           kepuasan di seluruh departemen InJourney Airports.
         </p>
       </div>
@@ -417,7 +417,7 @@ function buildDeptRow(key, deptNames) {
   const maxPengisian = selectedSurveyFilter.value?.maxPengisian ?? 1;
   const deptSet = new Set(deptNames);
 
-  const employeesHere = store.employees.filter((e) => deptSet.has(e.unitKerja));
+  const employeesHere = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja));
   const pegawaiOrganik = employeesHere.filter((e) => e.jenisPegawai === "Organik").length;
   const pegawaiNonOrganik = employeesHere.length - pegawaiOrganik;
   const pegawaiTotal = employeesHere.length;

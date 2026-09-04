@@ -62,7 +62,7 @@ const backToReportLink = computed(() => ({
 }));
 
 const employeesInDept = computed(() =>
-  store.employees.filter((e) => e.unitKerja === departmentName.value)
+  store.employees.filter((e) => e.isActive && e.unitKerja === departmentName.value)
 );
 </script>
 
