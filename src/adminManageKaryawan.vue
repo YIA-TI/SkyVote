@@ -162,8 +162,15 @@
 
             <form class="form-body" @submit.prevent="submitForm">
               <div class="field">
-                <label class="field-label" for="karyawan-nip">NIP</label>
-                <input id="karyawan-nip" v-model="form.nip" class="input" type="text" placeholder="Opsional" />
+                <label class="field-label" for="karyawan-nip">NIP <span class="required">*</span></label>
+                <input
+                  id="karyawan-nip"
+                  v-model="form.nip"
+                  class="input"
+                  type="text"
+                  placeholder="Nomor induk pegawai"
+                  required
+                />
               </div>
 
               <div class="field">
