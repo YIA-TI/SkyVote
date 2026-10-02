@@ -150,8 +150,8 @@
           <div v-if="selectedSurvey?.tipe === 'Internal'" class="field questions-field">
             <label class="field-label">Pertanyaan</label>
             <div v-if="questionsLoading" class="questions-loading">Memuat pertanyaan...</div>
-            <div v-else v-for="q in questions" :key="q.id" class="question-block">
-              <p class="question-text">{{ q.pertanyaan }}</p>
+            <div v-else v-for="(q, qi) in questions" :key="q.id" class="question-block">
+              <p class="question-text">{{ qi + 1 }}. {{ q.pertanyaan }}</p>
               <template v-if="q.tipe === 'Pilihan'">
                 <label v-for="opt in q.options" :key="opt.id" class="option-choice">
                   <input type="radio" :name="`question-${q.id}`" :value="opt.id" v-model="answers[q.id]" />
