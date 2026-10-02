@@ -504,9 +504,9 @@ function exportToPdf() {
     cursorY = doc.lastAutoTable.finalY + 10;
   }
 
-  for (const q of results.value) {
+  for (const [index, q] of results.value.entries()) {
     doc.setFontSize(11);
-    const headingLines = doc.splitTextToSize(questionHeading(q), pageWidth);
+    const headingLines = doc.splitTextToSize(`${index + 1}. ${questionHeading(q)}`, pageWidth);
     const headingHeight = headingLines.length * 5;
 
     if (cursorY + headingHeight > 270) {
