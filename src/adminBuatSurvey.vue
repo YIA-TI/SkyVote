@@ -61,6 +61,17 @@
             </button>
           </div>
 
+          <div v-if="form.tipe === 'Internal'" class="tipe-field">
+            <label class="field-label" for="deskripsi">Deskripsi</label>
+            <textarea
+              id="deskripsi"
+              v-model.trim="form.deskripsi"
+              class="input input-textarea"
+              rows="4"
+              placeholder="Jelaskan detail kegiatan survei yang akan dilakukan..."
+            />
+          </div>
+
           <template v-if="form.tipe === 'Eksternal'">
             <div class="input-wrap tipe-field">
               <svg class="input-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
@@ -304,6 +315,7 @@ const form = reactive({
   nama: "",
   tipe: "Eksternal",
   link: "",
+  deskripsi: "",
   questions: [emptyQuestion()],
   tanggalMulai: "",
   tanggalSelesai: "",
@@ -336,6 +348,7 @@ watch(
       form.nama = "";
       form.tipe = "Eksternal";
       form.link = "";
+      form.deskripsi = "";
       form.questions = [emptyQuestion()];
       form.tanggalMulai = "";
       form.tanggalSelesai = "";
@@ -354,6 +367,7 @@ watch(
     form.nama = survey.nama;
     form.tipe = survey.tipe;
     form.link = survey.link;
+    form.deskripsi = survey.deskripsi;
     form.tanggalMulai = survey.tanggalMulai;
     form.tanggalSelesai = survey.tanggalSelesai;
     form.status = survey.status;
@@ -389,6 +403,7 @@ function buildPayload(overrides = {}) {
     nama: form.nama,
     tipe: form.tipe,
     link: form.link,
+    deskripsi: form.deskripsi,
     tanggalMulai: form.tanggalMulai,
     tanggalSelesai: form.tanggalSelesai,
     status: form.status,
@@ -610,6 +625,14 @@ async function handleSaveDraft() {
   color: var(--color-text);
   background-color: var(--color-surface);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-textarea {
+  height: auto;
+  min-height: 96px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
 }
 
 .input-select {

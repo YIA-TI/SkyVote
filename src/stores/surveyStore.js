@@ -19,6 +19,7 @@ function mapSurvey(row) {
     nama: row.nama,
     tipe: row.tipe ?? "Eksternal",
     link: row.link ?? "",
+    deskripsi: row.deskripsi ?? "",
     tanggalMulai: row.tanggal_mulai ?? "",
     tanggalSelesai: row.tanggal_selesai ?? "",
     status: row.status,
@@ -26,7 +27,7 @@ function mapSurvey(row) {
   };
 }
 
-function toSurveyRow({ nama, tipe, link, tanggalMulai, tanggalSelesai, status, maxPengisian }) {
+function toSurveyRow({ nama, tipe, link, deskripsi, tanggalMulai, tanggalSelesai, status, maxPengisian }) {
   const isInternal = tipe === "Internal";
   let processedLink = isInternal || !link ? "" : link.trim();
   // Auto-add https:// if link doesn't start with http:// or https://
@@ -37,6 +38,7 @@ function toSurveyRow({ nama, tipe, link, tanggalMulai, tanggalSelesai, status, m
     nama: nama.trim(),
     tipe: isInternal ? "Internal" : "Eksternal",
     link: processedLink,
+    deskripsi: isInternal ? (deskripsi ?? "").trim() : "",
     tanggal_mulai: tanggalMulai || null,
     tanggal_selesai: tanggalSelesai || null,
     status: status || "Draft",
