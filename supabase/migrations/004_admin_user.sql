@@ -1,0 +1,22 @@
+-- Create a dummy admin user for testing/demo purposes.
+--
+-- IMPORTANT: This script must be run AFTER 003_seed_data.sql has been executed.
+--
+-- Steps:
+-- 1. Go to Supabase Dashboard → Authentication → Users
+-- 2. Click "Add user" → Create with the credentials below
+-- 3. Copy the UUID from the created user
+-- 4. Uncomment the INSERT statement below, replace '<UUID>' with the copied UUID
+-- 5. Run this migration in the SQL Editor
+--
+-- Credentials for dummy admin user (for testing only):
+--   Email: admin@survey.local
+--   Password: AdminSurvey123!
+
+-- After creating the user in Auth, uncomment and run this:
+-- insert into profiles (id, role, display_name) values
+--   ('<UUID-from-step-3>', 'admin', 'Admin Demo');
+
+-- Example (UNCOMMENT & REPLACE <UUID> after creating user in Dashboard):
+-- insert into profiles (id, role, display_name) values
+--   ('11111111-1111-1111-1111-111111111111', 'admin', 'Admin Demo');
