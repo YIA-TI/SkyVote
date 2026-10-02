@@ -78,6 +78,10 @@
               </a>
               <span v-else class="survey-link-empty">Link belum tersedia</span>
             </div>
+
+            <p v-if="selectedSurvey?.tipe === 'Internal' && selectedSurvey.deskripsi" class="survey-deskripsi">
+              {{ selectedSurvey.deskripsi }}
+            </p>
           </div>
 
           <div class="field">
@@ -834,6 +838,19 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   margin-top: 6px;
+}
+
+.survey-deskripsi {
+  margin-top: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background-color: rgba(0, 93, 172, 0.06);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-line;
 }
 
 .name-quota-info {
