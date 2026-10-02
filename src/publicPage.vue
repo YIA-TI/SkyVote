@@ -31,12 +31,13 @@
     <AppHeader />
 
     <main class="main-content">
+      <div class="page-body">
       <div class="card">
         <div class="card-accent" aria-hidden="true" />
         <div class="decorative-blur-blob" />
 
         <div class="card-heading">
-          <h1 class="card-title">Halaman Input Bukti Survei</h1>
+          <h1 class="card-title">Pengisian Data Survei</h1>
           <p class="card-subtitle">Silakan lengkapi data survei di bawah ini.</p>
         </div>
 
@@ -221,6 +222,11 @@
           </button>
         </form>
       </div>
+
+      <footer class="page-footer">
+        Hak Cipta &copy; {{ currentYear }} Yogyakarta International Airport.
+      </footer>
+      </div>
     </main>
   </div>
 </template>
@@ -237,6 +243,7 @@ const store = useSurveyStore();
 const toast = useToastStore();
 const router = useRouter();
 const surveys = computed(() => store.activeAvailableSurveys);
+const currentYear = new Date().getFullYear();
 
 const selectedSurveyId = ref(null);
 const fileInput = ref(null);
@@ -494,6 +501,21 @@ async function handleSubmit() {
   justify-content: center;
   padding: 16px 24px;
   overflow-y: auto;
+}
+
+.page-body {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.page-footer {
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
 }
 
 /* ── Drifting spinning-flower silhouettes ────────────────────────────────
