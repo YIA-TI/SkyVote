@@ -494,6 +494,10 @@ async function handleSubmit() {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* 100vh on mobile includes the area behind the browser's address bar, so
+     the page is taller than the visible screen and the centered card looks
+     shifted down/cut off. dvh tracks the actually visible height. */
+  height: 100dvh;
   background-color: var(--color-bg);
 }
 
@@ -505,6 +509,15 @@ async function handleSubmit() {
   justify-content: center;
   padding: 16px 24px;
   overflow-y: auto;
+  /* The card's decorative blur blob sticks out past the card's right edge;
+     without this it makes the page horizontally scrollable on narrow screens. */
+  overflow-x: hidden;
+}
+
+@media (max-width: 520px) {
+  .main-content {
+    padding: 12px 16px;
+  }
 }
 
 .page-body {
