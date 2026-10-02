@@ -102,6 +102,29 @@ function mapNotification(row) {
   };
 }
 
+// The success page shows a summary of the last submit. The Pinia store lives
+// in memory only, so a reload / mobile tab restore / back-forward would wipe
+// it and leave the success page with no summary. Keep a snapshot (including
+// the survey name, since surveys may not be loaded again) in sessionStorage.
+const LAST_SUBMISSION_KEY = "skyvote:lastSubmission";
+
+function loadLastSubmission() {
+  try {
+    const raw = sessionStorage.getItem(LAST_SUBMISSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastSubmission(submission) {
+  try {
+    sessionStorage.setItem(LAST_SUBMISSION_KEY, JSON.stringify(submission));
+  } catch {
+    // Storage unavailable (private mode etc.) — summary just won't survive a reload.
+  }
+}
+
 export const useSurveyStore = defineStore("survey", {
   state: () => ({
     surveys: [],
@@ -110,7 +133,7 @@ export const useSurveyStore = defineStore("survey", {
     departments: [],
     notifications: [],
     workforceTotals: { Organik: 0, "Non-Organik": 0 },
-    lastSubmission: null,
+    lastSubmission: loadLastSubmission(),
     baseDataLoaded: false,
     realtimeChannels: [],
     questionCounts: {},
@@ -488,7 +511,7 @@ export const useSurveyStore = defineStore("survey", {
         if (error) throw new Error(error.message);
         const submission = mapSubmission(data);
         this.submissions.push(submission);
-        this.lastSubmission = submission;
+        this.rememberLastSubmission(submission);
         return submission;
       }
 
@@ -533,8 +556,17 @@ export const useSurveyStore = defineStore("survey", {
         created_at: new Date().toISOString(),
       });
       this.submissions.push(submission);
-      this.lastSubmission = submission;
+      this.rememberLastSubmission(submission);
       return submission;
+    },
+
+    rememberLastSubmission(submission) {
+      const snapshot = {
+        ...submission,
+        surveyNama: this.findSurvey(submission.surveyId)?.nama ?? "",
+      };
+      this.lastSubmission = snapshot;
+      saveLastSubmission(snapshot);
     },
 
     // Deletes one submission row entirely (plus its evidence photo, if

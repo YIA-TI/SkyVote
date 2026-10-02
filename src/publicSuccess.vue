@@ -60,13 +60,22 @@
 
 <script setup>
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
 import { useSurveyStore } from "./stores/surveyStore";
 
 const store = useSurveyStore();
+const router = useRouter();
 const submission = computed(() => store.lastSubmission);
+
+// Opened directly without ever submitting a survey -> nothing to confirm.
+if (!store.lastSubmission) {
+  router.replace("/");
+}
 const surveyName = computed(() =>
-  submission.value ? store.findSurvey(submission.value.surveyId)?.nama ?? "-" : "-"
+  submission.value
+    ? submission.value.surveyNama || store.findSurvey(submission.value.surveyId)?.nama || "-"
+    : "-"
 );
 const submissionTime = computed(() => {
   if (!submission.value?.createdAt) return "";
