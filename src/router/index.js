@@ -78,13 +78,13 @@ const routes = [
         path: "karyawan",
         name: "admin-manage-karyawan",
         component: () => import("../adminManageKaryawan.vue"),
-        meta: { title: "Kelola Pegawai" },
+        meta: { title: "Kelola Pegawai", requiresSuperAdmin: true },
       },
       {
         path: "hapus-gambar",
         name: "admin-manage-images",
         component: () => import("../adminManageImages.vue"),
-        meta: { title: "Hapus Data" },
+        meta: { title: "Hapus Data", requiresSuperAdmin: true },
       },
     ],
   },
@@ -109,6 +109,11 @@ router.beforeEach(async (to) => {
 
   if (!authStore.isAdmin) {
     return { name: "admin-login" };
+  }
+
+  // Regular admins are sent back to the survey list instead of these pages.
+  if (to.matched.some((record) => record.meta.requiresSuperAdmin) && !authStore.isSuperAdmin) {
+    return { name: "admin-survey-management" };
   }
 
   return true;

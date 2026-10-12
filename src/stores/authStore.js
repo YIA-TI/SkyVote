@@ -10,7 +10,10 @@ export const useAuthStore = defineStore("auth", {
   }),
 
   getters: {
-    isAdmin: (state) => state.profile?.role === "admin",
+    // "admin" = any admin account; "super_admin" additionally manages
+    // employees (Kelola Pegawai) and deletes data (Hapus Data).
+    isAdmin: (state) => ["admin", "super_admin"].includes(state.profile?.role),
+    isSuperAdmin: (state) => state.profile?.role === "super_admin",
   },
 
   actions: {

@@ -57,6 +57,25 @@ insert into profiles (id, role, display_name) values
 
 ---
 
+## Role: Admin vs Super Admin
+
+Kolom `role` di tabel `profiles` bisa berisi:
+
+| Role | Akses |
+|------|-------|
+| `admin` | Semua halaman admin **kecuali** Kelola Pegawai dan Hapus Data |
+| `super_admin` | Semua halaman admin, termasuk Kelola Pegawai dan Hapus Data |
+
+Batasan ini juga dijaga di database (RLS), bukan hanya disembunyikan di menu.
+Untuk menjadikan sebuah akun super admin (setelah migrasi `025_super_admin_role.sql`):
+
+```sql
+update profiles set role = 'super_admin'
+where id = (select id from auth.users where email = 'email-super-admin@contoh.com');
+```
+
+---
+
 ## Troubleshooting
 
 **❌ "Akun ini tidak memiliki akses admin"**
