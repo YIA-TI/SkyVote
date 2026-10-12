@@ -14,6 +14,11 @@ const routes = [
     component: () => import("../publicSuccess.vue"),
   },
   {
+    path: "/hasil-bukti",
+    name: "public-bukti",
+    component: () => import("../publicBukti.vue"),
+  },
+  {
     path: "/admin/login",
     name: "admin-login",
     component: () => import("../adminLogin.vue"),

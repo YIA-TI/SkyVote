@@ -127,6 +127,9 @@
                   <span class="pengisian-count">{{ submissionCount(survey) }} pengisian</span>
                 </div>
                 <span class="pengisian-limit">Maks {{ survey.maxPengisian }}x / pegawai / hari</span>
+                <span v-if="survey.tipe !== 'Internal' && survey.tampilPublik" class="pengisian-limit pengisian-publik">
+                  Tampil di halaman publik
+                </span>
               </td>
               <td class="col-action">
                 <div class="row-actions">
@@ -632,6 +635,11 @@ async function confirmDelete(survey) {
   margin-top: 2px;
   font-size: 11px;
   color: var(--color-text-muted);
+}
+
+.pengisian-publik {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .status-dot {

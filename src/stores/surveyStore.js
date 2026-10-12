@@ -20,6 +20,7 @@ function mapSurvey(row) {
     tipe: row.tipe ?? "Eksternal",
     link: row.link ?? "",
     deskripsi: row.deskripsi ?? "",
+    tampilPublik: row.tampil_publik ?? false,
     tanggalMulai: row.tanggal_mulai ?? "",
     tanggalSelesai: row.tanggal_selesai ?? "",
     status: row.status,
@@ -27,7 +28,17 @@ function mapSurvey(row) {
   };
 }
 
-function toSurveyRow({ nama, tipe, link, deskripsi, tanggalMulai, tanggalSelesai, status, maxPengisian }) {
+function toSurveyRow({
+  nama,
+  tipe,
+  link,
+  deskripsi,
+  tampilPublik,
+  tanggalMulai,
+  tanggalSelesai,
+  status,
+  maxPengisian,
+}) {
   const isInternal = tipe === "Internal";
   let processedLink = isInternal || !link ? "" : link.trim();
   // Auto-add https:// if link doesn't start with http:// or https://
@@ -39,6 +50,8 @@ function toSurveyRow({ nama, tipe, link, deskripsi, tanggalMulai, tanggalSelesai
     tipe: isInternal ? "Internal" : "Eksternal",
     link: processedLink,
     deskripsi: isInternal ? (deskripsi ?? "").trim() : "",
+    // The public evidence page only lists external surveys.
+    tampil_publik: isInternal ? false : Boolean(tampilPublik),
     tanggal_mulai: tanggalMulai || null,
     tanggal_selesai: tanggalSelesai || null,
     status: status || "Draft",
@@ -277,6 +290,50 @@ export const useSurveyStore = defineStore("survey", {
         return null;
       }
       return Number(data) || 0;
+    },
+
+    // ── Public "Hasil Input Bukti" page (no login) ───────────────────────
+    // Backed by narrow RPCs (see 022 migration); these return data directly
+    // instead of touching store.submissions / store.surveys.
+    async fetchPublicBuktiSurveys() {
+      const { data, error } = await supabase.rpc("public_bukti_surveys");
+      if (error) throw new Error(error.message);
+      return data.map((row) => ({
+        id: row.id,
+        nama: row.nama,
+        tanggalMulai: row.tanggal_mulai ?? "",
+        tanggalSelesai: row.tanggal_selesai ?? "",
+        status: row.status,
+      }));
+    },
+
+    async fetchPublicBukti(surveyId, { search = "", limit = 10, offset = 0 } = {}) {
+      const { data, error } = await supabase.rpc("public_bukti_list", {
+        p_survey_id: surveyId,
+        p_search: search,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      if (error) throw new Error(error.message);
+      return {
+        total: data.length ? Number(data[0].total_count) : 0,
+        rows: data.map((row) => ({ ...mapSubmission(row), surveyId })),
+      };
+    },
+
+    // Signed URLs (1 hour) for a batch of storage paths, as { path: url }.
+    async fetchBuktiSignedUrls(paths) {
+      const unique = [...new Set(paths.filter(Boolean))];
+      if (unique.length === 0) return {};
+      const { data, error } = await supabase.storage
+        .from(BUKTI_BUCKET)
+        .createSignedUrls(unique, 3600);
+      if (error) throw new Error(error.message);
+      const urls = {};
+      for (const item of data) {
+        if (item.signedUrl) urls[item.path] = item.signedUrl;
+      }
+      return urls;
     },
 
     async fetchEmployees() {

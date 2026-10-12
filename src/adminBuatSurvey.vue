@@ -92,6 +92,17 @@
               />
             </div>
             <p class="field-helper">Opsional — bisa dikosongkan dan diisi nanti sebelum survei diaktifkan.</p>
+
+            <label class="check-option">
+              <input v-model="form.tampilPublik" type="checkbox" />
+              <span>
+                Tampilkan hasil bukti di halaman publik
+                <small>
+                  Daftar pegawai beserta foto bukti survei ini akan bisa dilihat siapa pun tanpa login di
+                  halaman Hasil Input Bukti.
+                </small>
+              </span>
+            </label>
           </template>
 
           <div v-else class="question-builder tipe-field">
@@ -317,6 +328,7 @@ const form = reactive({
   tipe: "Eksternal",
   link: "",
   deskripsi: "",
+  tampilPublik: false,
   questions: [emptyQuestion()],
   tanggalMulai: "",
   tanggalSelesai: "",
@@ -350,6 +362,7 @@ watch(
       form.tipe = "Eksternal";
       form.link = "";
       form.deskripsi = "";
+      form.tampilPublik = false;
       form.questions = [emptyQuestion()];
       form.tanggalMulai = "";
       form.tanggalSelesai = "";
@@ -369,6 +382,7 @@ watch(
     form.tipe = survey.tipe;
     form.link = survey.link;
     form.deskripsi = survey.deskripsi;
+    form.tampilPublik = survey.tampilPublik;
     form.tanggalMulai = survey.tanggalMulai;
     form.tanggalSelesai = survey.tanggalSelesai;
     form.status = survey.status;
@@ -405,6 +419,7 @@ function buildPayload(overrides = {}) {
     tipe: form.tipe,
     link: form.link,
     deskripsi: form.deskripsi,
+    tampilPublik: form.tampilPublik,
     tanggalMulai: form.tanggalMulai,
     tanggalSelesai: form.tanggalSelesai,
     status: form.status,
@@ -599,6 +614,34 @@ async function handleSaveDraft() {
   font-size: 12px;
   color: var(--color-text-muted);
   margin-top: 2px;
+}
+
+.check-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.check-option input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.check-option small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
 }
 
 .input-wrap {
