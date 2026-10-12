@@ -262,6 +262,22 @@ export const useSurveyStore = defineStore("survey", {
       this.submissions = data.map(mapSubmission);
     },
 
+    // Real per-day fill count for one employee, via an RPC because anonymous
+    // visitors cannot SELECT from submissions (see 020 migration). Returns
+    // null if the lookup fails, so callers can fall back to the local cache.
+    async fetchEmployeeDayCount(surveyId, nama, tanggal) {
+      const { data, error } = await supabase.rpc("employee_submission_count", {
+        p_survey_id: surveyId,
+        p_nama: nama,
+        p_tanggal: tanggal,
+      });
+      if (error) {
+        console.warn("employee_submission_count failed:", error.message);
+        return null;
+      }
+      return Number(data) || 0;
+    },
+
     async fetchEmployees() {
       const { data, error } = await supabase.from("employees").select("*").order("nama");
       if (error) throw error;

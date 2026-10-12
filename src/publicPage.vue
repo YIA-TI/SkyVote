@@ -363,22 +363,41 @@ watch(selectedSurveyId, async (id) => {
 const minDate = computed(() => selectedSurvey.value?.tanggalMulai || undefined);
 const maxDate = computed(() => selectedSurvey.value?.tanggalSelesai || undefined);
 
-const employeeSubmissionCount = computed(() =>
-  selectedSurveyId.value && selectedEmployee.value
-    ? store.submissionCountForEmployeeSurvey(
-        selectedSurveyId.value,
-        selectedEmployee.value.nama,
-        form.tanggal
-      )
-    : 0
+// Anonymous visitors can't read the submissions table, so the real count for
+// (survey, employee, date) comes from an RPC. Re-fetched whenever any of the
+// three change; `latestCountRequest` drops responses that arrive out of order.
+const serverCount = ref(null);
+let latestCountRequest = 0;
+
+watch(
+  [selectedSurveyId, selectedEmployee, () => form.tanggal],
+  async ([surveyId, employee, tanggal]) => {
+    const request = ++latestCountRequest;
+    serverCount.value = null;
+    if (!surveyId || !employee || !tanggal) return;
+    const count = await store.fetchEmployeeDayCount(surveyId, employee.nama, tanggal);
+    if (request === latestCountRequest) serverCount.value = count;
+  },
+  { immediate: true }
 );
 
 // maxPengisian is a per-day limit: quota is counted for the date picked above.
-const quotaFull = computed(() =>
-  selectedSurveyId.value && selectedEmployee.value
-    ? store.isSurveyFullForEmployee(selectedSurveyId.value, selectedEmployee.value.nama, form.tanggal)
-    : false
-);
+// The local cache only has data in an admin session, so take whichever is higher.
+const employeeSubmissionCount = computed(() => {
+  if (!selectedSurveyId.value || !selectedEmployee.value) return 0;
+  const local = store.submissionCountForEmployeeSurvey(
+    selectedSurveyId.value,
+    selectedEmployee.value.nama,
+    form.tanggal
+  );
+  return Math.max(serverCount.value ?? 0, local);
+});
+
+const quotaFull = computed(() => {
+  const max = selectedSurvey.value?.maxPengisian;
+  if (!max || !selectedEmployee.value || !form.tanggal) return false;
+  return employeeSubmissionCount.value >= max;
+});
 
 const quotaBadgeClass = computed(() => {
   if (!selectedSurvey.value || !selectedEmployee.value) return "";
