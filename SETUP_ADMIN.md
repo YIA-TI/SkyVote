@@ -63,8 +63,8 @@ Kolom `role` di tabel `profiles` bisa berisi:
 
 | Role | Akses |
 |------|-------|
-| `admin` | Semua halaman admin **kecuali** Kelola Pegawai dan Hapus Data |
-| `super_admin` | Semua halaman admin, termasuk Kelola Pegawai dan Hapus Data |
+| `admin` | Semua halaman admin **kecuali** Hapus Data |
+| `super_admin` | Semua halaman admin, termasuk Hapus Data |
 
 Batasan ini juga dijaga di database (RLS), bukan hanya disembunyikan di menu.
 Untuk menjadikan sebuah akun super admin (setelah migrasi `025_super_admin_role.sql`):

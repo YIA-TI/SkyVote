@@ -78,7 +78,7 @@ const routes = [
         path: "karyawan",
         name: "admin-manage-karyawan",
         component: () => import("../adminManageKaryawan.vue"),
-        meta: { title: "Kelola Pegawai", requiresSuperAdmin: true },
+        meta: { title: "Kelola Pegawai" },
       },
       {
         path: "hapus-gambar",
