@@ -293,7 +293,7 @@ export const useSurveyStore = defineStore("survey", {
       return Number(data) || 0;
     },
 
-    // ── Public report page /result (no login) ───────────────────────
+    // ── Public report page /report (no login) ───────────────────────
     // Backed by narrow RPCs that only return aggregate numbers (see 027
     // migration); they return data directly instead of touching
     // store.surveys / store.submissions.

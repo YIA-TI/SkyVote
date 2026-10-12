@@ -14,7 +14,7 @@ const routes = [
     component: () => import("../publicSuccess.vue"),
   },
   {
-    path: "/result",
+    path: "/report",
     name: "public-bukti",
     component: () => import("../publicBukti.vue"),
   },
