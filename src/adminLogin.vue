@@ -71,12 +71,39 @@
             <input
               id="password"
               v-model="password"
-              type="password"
-              class="input"
+              :type="showPassword ? 'text' : 'password'"
+              class="input input-with-toggle"
               placeholder="••••••••"
               autocomplete="current-password"
               required
             />
+            <button
+              type="button"
+              class="password-toggle"
+              :aria-label="showPassword ? 'Sembunyikan password' : 'Tampilkan password'"
+              :aria-pressed="showPassword"
+              @click="showPassword = !showPassword"
+            >
+              <svg v-if="!showPassword" width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M1.5 10S4.5 4.5 10 4.5 18.5 10 18.5 10 15.5 15.5 10 15.5 1.5 10 1.5 10Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linejoin="round"
+                />
+                <circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+              <svg v-else width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M8.2 4.7A8.6 8.6 0 0 1 10 4.5c5.5 0 8.5 5.5 8.5 5.5a14.6 14.6 0 0 1-2.4 3M5.4 6.1A14.7 14.7 0 0 0 1.5 10S4.5 15.5 10 15.5c1.3 0 2.5-.3 3.5-.8M8.4 8.4a2.6 2.6 0 0 0 3.2 3.2"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path d="M3 3l14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -105,6 +132,7 @@ const router = useRouter();
 
 const email = ref("");
 const password = ref("");
+const showPassword = ref(false);
 const loading = ref(false);
 const shakeError = ref(false);
 
@@ -368,6 +396,32 @@ async function handleSubmit() {
   color: var(--color-text);
   background-color: var(--color-bg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.input-with-toggle {
+  padding-right: 44px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--color-primary);
+  outline: none;
 }
 
 .input:focus {
