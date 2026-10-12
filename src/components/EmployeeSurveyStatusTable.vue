@@ -154,29 +154,36 @@
                   <td>{{ sub.tanggal }}</td>
                   <td>{{ submissionTime(sub) || "-" }}</td>
                   <td>
-                    <button
-                      v-if="sub.fileBukti"
-                      type="button"
-                      class="detail-view-toggle"
-                      @click="toggleImage(sub)"
-                    >
-                      {{ expandedSubmissionId === sub.id ? "Tutup" : "Lihat Bukti" }}
-                    </button>
+                    <template v-if="evidenceFiles(sub).length > 0">
+                      <button
+                        v-for="evidence in evidenceFiles(sub)"
+                        :key="evidence.key"
+                        type="button"
+                        class="detail-view-toggle"
+                        @click="toggleImage(evidence)"
+                      >
+                        {{ expandedKey === evidence.key ? "Tutup" : `Lihat ${evidence.label}` }}
+                      </button>
+                    </template>
                     <span v-else class="detail-deleted-label">Gambar dihapus</span>
                   </td>
                 </tr>
-                <tr v-if="expandedSubmissionId === sub.id" class="detail-image-row">
+                <tr
+                  v-for="evidence in evidenceFiles(sub).filter((e) => e.key === expandedKey)"
+                  :key="`${evidence.key}-image`"
+                  class="detail-image-row"
+                >
                   <td colspan="4">
-                    <p v-if="imageLoadingId === sub.id" class="detail-modal-loading">Memuat bukti...</p>
+                    <p v-if="imageLoadingKey === evidence.key" class="detail-modal-loading">Memuat bukti...</p>
                     <img
-                      v-else-if="imageUrls[sub.id]"
+                      v-else-if="imageUrls[evidence.key]"
                       class="detail-list-image-el"
-                      :src="imageUrls[sub.id]"
-                      :alt="`Bukti ${detailEmployee.nama} ${sub.tanggal}`"
+                      :src="imageUrls[evidence.key]"
+                      :alt="`${evidence.label} ${detailEmployee.nama} ${sub.tanggal}`"
                     />
                     <p v-else class="detail-image-error">
                       Gagal memuat bukti.<br />
-                      <span v-if="imageErrors[sub.id]">{{ imageErrors[sub.id] }}</span>
+                      <span v-if="imageErrors[evidence.key]">{{ imageErrors[evidence.key] }}</span>
                     </p>
                   </td>
                 </tr>
@@ -250,10 +257,19 @@ function submissionTime(submission) {
 
 const detailEmployee = ref(null);
 const detailSubmissions = ref([]);
-const expandedSubmissionId = ref(null);
+// Each submission can have a main proof photo plus an optional extra one;
+// every photo is addressed by its own key ("<id>" / "<id>:2").
+const expandedKey = ref(null);
 const imageUrls = ref({});
-const imageLoadingId = ref(null);
+const imageLoadingKey = ref(null);
 const imageErrors = ref({});
+
+function evidenceFiles(submission) {
+  return [
+    { key: String(submission.id), label: "Bukti", path: submission.fileBukti },
+    { key: `${submission.id}:2`, label: "Bukti Tambahan", path: submission.fileBukti2 },
+  ].filter((e) => e.path);
+}
 
 function openDetail(employee) {
   if (!props.surveyId) return;
@@ -261,38 +277,38 @@ function openDetail(employee) {
   detailSubmissions.value = store.submissions.filter(
     (s) => s.surveyId === props.surveyId && s.nama === employee.nama
   );
-  expandedSubmissionId.value = null;
+  expandedKey.value = null;
   imageUrls.value = {};
 }
 
 function closeDetail() {
   detailEmployee.value = null;
   detailSubmissions.value = [];
-  expandedSubmissionId.value = null;
+  expandedKey.value = null;
   imageUrls.value = {};
 }
 
-async function toggleImage(submission) {
-  if (expandedSubmissionId.value === submission.id) {
-    expandedSubmissionId.value = null;
+async function toggleImage(evidence) {
+  if (expandedKey.value === evidence.key) {
+    expandedKey.value = null;
     return;
   }
 
-  expandedSubmissionId.value = submission.id;
+  expandedKey.value = evidence.key;
 
-  if (imageUrls.value[submission.id] || !submission.fileBukti) return;
+  if (imageUrls.value[evidence.key] || !evidence.path) return;
 
-  imageLoadingId.value = submission.id;
+  imageLoadingKey.value = evidence.key;
   const { data, error } = await supabase.storage
     .from(BUKTI_BUCKET)
-    .createSignedUrl(submission.fileBukti, 300);
+    .createSignedUrl(evidence.path, 300);
   if (!error) {
-    imageUrls.value = { ...imageUrls.value, [submission.id]: data.signedUrl };
+    imageUrls.value = { ...imageUrls.value, [evidence.key]: data.signedUrl };
   } else {
-    imageErrors.value = { ...imageErrors.value, [submission.id]: error.message };
-    console.error("createSignedUrl error:", error, "path:", submission.fileBukti);
+    imageErrors.value = { ...imageErrors.value, [evidence.key]: error.message };
+    console.error("createSignedUrl error:", error, "path:", evidence.path);
   }
-  imageLoadingId.value = null;
+  imageLoadingKey.value = null;
 }
 
 const filteredEmployees = computed(() => {
@@ -755,6 +771,10 @@ const pagedEmployees = computed(() => filteredEmployees.value.slice(pageStart.va
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s ease;
+}
+
+.detail-view-toggle + .detail-view-toggle {
+  margin-left: 6px;
 }
 
 .detail-view-toggle:hover {

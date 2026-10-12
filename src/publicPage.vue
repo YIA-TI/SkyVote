@@ -175,26 +175,27 @@
             </div>
           </div>
 
-          <div v-else class="field">
-            <label class="field-label">Upload Bukti</label>
+          <template v-else>
+          <div v-for="slot in uploadSlots" :key="slot.key" class="field">
+            <label class="field-label">{{ slot.label }}</label>
             <div
               class="dropzone"
-              :class="{ 'dropzone-active': isDragging, 'dropzone-disabled': quotaFull }"
-              @click="!quotaFull && triggerFilePicker()"
-              @dragover.prevent="!quotaFull && (isDragging = true)"
-              @dragleave.prevent="isDragging = false"
-              @drop.prevent="handleDrop"
+              :class="{ 'dropzone-active': dragging[slot.key], 'dropzone-disabled': quotaFull }"
+              @click="!quotaFull && triggerFilePicker(slot.key)"
+              @dragover.prevent="!quotaFull && (dragging[slot.key] = true)"
+              @dragleave.prevent="dragging[slot.key] = false"
+              @drop.prevent="handleDrop($event, slot.key)"
             >
               <input
-                ref="fileInput"
+                :ref="(el) => (fileInputs[slot.key] = el)"
                 type="file"
                 accept="image/*"
                 class="file-input"
                 :disabled="quotaFull"
-                @change="handleFileChange"
+                @change="handleFileChange($event, slot.key)"
               />
-              <template v-if="form.file">
-                <p class="dropzone-filename">{{ form.file.name }}</p>
+              <template v-if="form[slot.key]">
+                <p class="dropzone-filename">{{ form[slot.key].name }}</p>
                 <p class="dropzone-hint">Klik untuk mengganti file</p>
               </template>
               <template v-else>
@@ -204,7 +205,15 @@
                 <p class="dropzone-hint">PNG, JPG, atau GIF (Maks. 5MB)</p>
               </template>
             </div>
-            <p v-if="quotaFull" class="field-error">
+            <button
+              v-if="!slot.required && form[slot.key]"
+              type="button"
+              class="remove-optional-file"
+              @click="clearFile(slot.key)"
+            >
+              Hapus file
+            </button>
+            <p v-if="quotaFull && slot.required" class="field-error">
               <svg class="field-error-icon" width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <path
                   d="M10 2 2 17h16L10 2Z"
@@ -218,6 +227,7 @@
               ({{ selectedSurvey?.maxPengisian }} kali per hari).
             </p>
           </div>
+          </template>
 
           <button type="submit" class="submit-button" :disabled="!canSubmit || submitting">
             <span v-if="submitting" class="spinner" aria-hidden="true" />
@@ -252,16 +262,23 @@ const surveys = computed(() => store.activeAvailableSurveys);
 const currentYear = new Date().getFullYear();
 
 const selectedSurveyId = ref(null);
-const fileInput = ref(null);
 const tanggalInput = ref(null);
-const isDragging = ref(false);
 const submitting = ref(false);
+
+// External surveys take a required proof photo plus one optional extra photo.
+const uploadSlots = [
+  { key: "file", label: "Upload Bukti", required: true },
+  { key: "file2", label: "Upload Bukti Tambahan (Opsional)", required: false },
+];
+const fileInputs = {};
+const dragging = reactive({ file: false, file2: false });
 
 const today = new Date().toISOString().slice(0, 10);
 
 const form = reactive({
   tanggal: today,
   file: null,
+  file2: null,
 });
 
 let pollInterval = null;
@@ -423,8 +440,7 @@ const canSubmit = computed(() => {
 });
 
 watch(selectedSurveyId, () => {
-  form.file = null;
-  if (fileInput.value) fileInput.value.value = "";
+  for (const { key } of uploadSlots) clearFile(key);
   if (minDate.value && form.tanggal < minDate.value) form.tanggal = minDate.value;
   if (maxDate.value && form.tanggal > maxDate.value) form.tanggal = maxDate.value;
 });
@@ -437,13 +453,18 @@ function openDatePicker() {
   }
 }
 
-function triggerFilePicker() {
-  fileInput.value?.click();
+function triggerFilePicker(key) {
+  fileInputs[key]?.click();
+}
+
+function clearFile(key) {
+  form[key] = null;
+  if (fileInputs[key]) fileInputs[key].value = "";
 }
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-function setFileIfValid(file) {
+function setFileIfValid(file, key) {
   if (!file) return;
   if (file.size > MAX_FILE_SIZE) {
     toast.show(
@@ -452,20 +473,20 @@ function setFileIfValid(file) {
     );
     return;
   }
-  form.file = file;
+  form[key] = file;
 }
 
-function handleFileChange(event) {
+function handleFileChange(event, key) {
   const file = event.target.files?.[0];
-  setFileIfValid(file);
+  setFileIfValid(file, key);
   if (event.target.value) event.target.value = "";
 }
 
-function handleDrop(event) {
-  isDragging.value = false;
+function handleDrop(event, key) {
+  dragging[key] = false;
   if (quotaFull.value) return;
   const file = event.dataTransfer?.files?.[0];
-  setFileIfValid(file);
+  setFileIfValid(file, key);
 }
 
 async function handleSubmit() {
@@ -480,6 +501,7 @@ async function handleSubmit() {
       jenisPegawai: selectedEmployee.value.jenisPegawai,
       departemen: selectedEmployee.value.unitKerja,
       file: isInternal ? undefined : form.file,
+      file2: isInternal ? undefined : form.file2 ?? undefined,
       answers: isInternal
         ? questions.value.flatMap((q) => {
             if (q.tipe === "Lisan") {
@@ -1015,6 +1037,24 @@ async function handleSubmit() {
 .dropzone-active {
   border-color: var(--color-primary);
   background-color: rgba(0, 93, 172, 0.04);
+}
+
+.remove-optional-file {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.remove-optional-file:hover {
+  color: var(--color-primary);
 }
 
 .dropzone-disabled {

@@ -69,6 +69,7 @@ function mapSubmission(row) {
     jenisPegawai: row.jenis_pegawai,
     departemen: row.departemen,
     fileBukti: row.file_bukti,
+    fileBukti2: row.file_bukti_2 ?? "",
     createdAt: row.created_at,
   };
 }
@@ -515,7 +516,7 @@ export const useSurveyStore = defineStore("survey", {
       });
     },
 
-    async addSubmission({ nama, tanggal, surveyId, jenisPegawai, departemen, file, answers }) {
+    async addSubmission({ nama, tanggal, surveyId, jenisPegawai, departemen, file, file2, answers }) {
       if (answers) {
         // Internal survey: answers are already the record, no file upload.
         // One RPC round-trip so we get the new submission's id back without
@@ -536,13 +537,28 @@ export const useSurveyStore = defineStore("survey", {
         return submission;
       }
 
-      const compressedFile = await compressImage(file);
-      const path = `${surveyId}/${Date.now()}-${compressedFile.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from(BUKTI_BUCKET)
-        .upload(path, compressedFile);
-      if (uploadError) {
-        throw new Error(`Gagal mengunggah bukti: ${uploadError.message}`);
+      const uploadBukti = async (source, suffix = "") => {
+        const compressed = await compressImage(source);
+        const uploadPath = `${surveyId}/${Date.now()}${suffix}-${compressed.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from(BUKTI_BUCKET)
+          .upload(uploadPath, compressed);
+        if (uploadError) {
+          throw new Error(`Gagal mengunggah bukti: ${uploadError.message}`);
+        }
+        return uploadPath;
+      };
+
+      const path = await uploadBukti(file);
+      let path2 = "";
+      if (file2) {
+        try {
+          path2 = await uploadBukti(file2, "-2");
+        } catch (err) {
+          // Don't leave the main photo orphaned in storage if the extra one fails.
+          await supabase.storage.from(BUKTI_BUCKET).remove([path]).catch(() => {});
+          throw err;
+        }
       }
 
       // No .select() here — the public submissions_insert_public RLS policy
@@ -557,6 +573,7 @@ export const useSurveyStore = defineStore("survey", {
         jenis_pegawai: jenisPegawai,
         departemen,
         file_bukti: path,
+        file_bukti_2: path2,
       });
 
       if (error) {
@@ -574,6 +591,7 @@ export const useSurveyStore = defineStore("survey", {
         jenis_pegawai: jenisPegawai,
         departemen,
         file_bukti: path,
+        file_bukti_2: path2,
         created_at: new Date().toISOString(),
       });
       this.submissions.push(submission);
@@ -597,10 +615,11 @@ export const useSurveyStore = defineStore("survey", {
       const submission = this.submissions.find((s) => s.id === submissionId);
       if (!submission) return;
 
-      if (submission.fileBukti) {
+      const filePaths = [submission.fileBukti, submission.fileBukti2].filter(Boolean);
+      if (filePaths.length > 0) {
         const { error: removeError } = await supabase.storage
           .from(BUKTI_BUCKET)
-          .remove([submission.fileBukti]);
+          .remove(filePaths);
         if (removeError) {
           throw new Error(`Gagal menghapus file: ${removeError.message}`);
         }
@@ -621,7 +640,7 @@ export const useSurveyStore = defineStore("survey", {
       const targets = this.submissions.filter((s) => s.surveyId === surveyId);
       if (targets.length === 0) return 0;
 
-      const paths = targets.filter((s) => s.fileBukti).map((s) => s.fileBukti);
+      const paths = targets.flatMap((s) => [s.fileBukti, s.fileBukti2]).filter(Boolean);
       if (paths.length > 0) {
         const { error: removeError } = await supabase.storage.from(BUKTI_BUCKET).remove(paths);
         if (removeError) {
