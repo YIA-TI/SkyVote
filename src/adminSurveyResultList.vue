@@ -2,7 +2,7 @@
   <div class="dashboard-page">
     <div class="page-heading">
       <div>
-        <h1 class="page-title">Hasil Survei</h1>
+        <h1 class="page-title">Hasil Survei Internal</h1>
         <p class="page-subtitle">Lihat rekap jawaban dari pengisi survei internal.</p>
       </div>
     </div>

@@ -12,8 +12,13 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     // "admin" = any admin account; "super_admin" additionally manages
     // employees (Kelola Pegawai) and deletes data (Hapus Data).
+    // "readonly" can sign in and view Dashboard / Hasil Survei Internal /
+    // Laporan, but not change anything. isAdmin stays "can write"; isStaff is
+    // "may enter the admin area at all".
     isAdmin: (state) => ["admin", "super_admin"].includes(state.profile?.role),
     isSuperAdmin: (state) => state.profile?.role === "super_admin",
+    isReadonly: (state) => state.profile?.role === "readonly",
+    isStaff: (state) => ["admin", "super_admin", "readonly"].includes(state.profile?.role),
   },
 
   actions: {
@@ -47,7 +52,7 @@ export const useAuthStore = defineStore("auth", {
       if (error) throw error;
       this.user = data.user;
       await this.fetchProfile();
-      if (!this.isAdmin) {
+      if (!this.isStaff) {
         await this.signOut();
         throw new Error("Akun ini tidak memiliki akses admin.");
       }

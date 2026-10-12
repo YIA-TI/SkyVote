@@ -46,7 +46,13 @@
         Dashboard
       </RouterLink>
 
-      <RouterLink to="/admin/management" class="nav-item" active-class="active" @click="$emit('close')">
+      <RouterLink
+        v-if="!authStore.isReadonly"
+        to="/admin/management"
+        class="nav-item"
+        active-class="active"
+        @click="$emit('close')"
+      >
         <span class="nav-icon-box">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
             <path
@@ -77,7 +83,7 @@
             />
           </svg>
         </span>
-        Hasil Survei
+        Hasil Survei Internal
       </RouterLink>
 
       <RouterLink to="/admin/report" class="nav-item" active-class="active" @click="$emit('close')">
@@ -90,7 +96,13 @@
         Laporan
       </RouterLink>
 
-      <RouterLink to="/admin/karyawan" class="nav-item" active-class="active" @click="$emit('close')">
+      <RouterLink
+        v-if="!authStore.isReadonly"
+        to="/admin/karyawan"
+        class="nav-item"
+        active-class="active"
+        @click="$emit('close')"
+      >
         <span class="nav-icon-box">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
             <circle cx="7.5" cy="6" r="2.6" stroke="currentColor" stroke-width="1.6" />

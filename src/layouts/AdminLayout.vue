@@ -27,7 +27,8 @@
         </div>
       </template>
       <template #actions>
-        <div ref="notifWrapRef" class="notif-wrap">
+        <!-- Readonly accounts can't read or clear admin notifications. -->
+        <div v-if="!authStore.isReadonly" ref="notifWrapRef" class="notif-wrap">
           <button
             class="icon-button"
             type="button"
@@ -99,7 +100,7 @@
           </div>
         </div>
 
-        <span class="header-divider" aria-hidden="true" />
+        <span v-if="!authStore.isReadonly" class="header-divider" aria-hidden="true" />
 
         <div class="avatar" :title="authStore.profile?.display_name || authStore.user?.email">
           {{ avatarInitial }}
@@ -184,7 +185,7 @@ async function toggleNotifPanel() {
 
 onMounted(() => {
   document.addEventListener("click", closeNotifOnOutsideClick);
-  store.fetchNotifications();
+  if (!authStore.isReadonly) store.fetchNotifications();
   store.setupRealtimeSubscriptions();
 });
 onBeforeUnmount(() => {
