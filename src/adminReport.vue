@@ -410,7 +410,7 @@ import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
 
-// publicMode: the same report rendered on the public /hasil-bukti page. It
+// publicMode: the same report rendered on the public /result page. It
 // reads aggregate counts through RPCs (anonymous visitors can't read
 // submissions), only lists surveys the admin ticked "tampil publik" for, and
 // drops the links to the per-employee detail pages.
