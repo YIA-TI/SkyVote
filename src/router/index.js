@@ -19,11 +19,6 @@ const routes = [
     component: () => import("../publicBukti.vue"),
   },
   {
-    // Old address, kept so links shared earlier still work.
-    path: "/hasil-bukti",
-    redirect: "/result",
-  },
-  {
     path: "/admin/login",
     name: "admin-login",
     component: () => import("../adminLogin.vue"),
