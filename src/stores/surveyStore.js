@@ -146,14 +146,19 @@ export const useSurveyStore = defineStore("survey", {
     submissionCountForSurvey: (state) => (surveyId) =>
       state.submissions.filter((s) => s.surveyId === surveyId).length,
 
-    submissionCountForEmployeeSurvey: (state) => (surveyId, nama) =>
-      state.submissions.filter((s) => s.surveyId === surveyId && s.nama === nama).length,
+    // maxPengisian is a per-day limit, so pass `tanggal` to count only the
+    // submissions made for that day. Without it, counts all days (used for
+    // the employee's full history).
+    submissionCountForEmployeeSurvey: (state) => (surveyId, nama, tanggal) =>
+      state.submissions.filter(
+        (s) => s.surveyId === surveyId && s.nama === nama && (!tanggal || s.tanggal === tanggal)
+      ).length,
 
     isSurveyFullForEmployee() {
-      return (surveyId, nama) => {
+      return (surveyId, nama, tanggal) => {
         const survey = this.findSurvey(surveyId);
-        if (!survey || !survey.maxPengisian || !nama) return false;
-        return this.submissionCountForEmployeeSurvey(surveyId, nama) >= survey.maxPengisian;
+        if (!survey || !survey.maxPengisian || !nama || !tanggal) return false;
+        return this.submissionCountForEmployeeSurvey(surveyId, nama, tanggal) >= survey.maxPengisian;
       };
     },
 

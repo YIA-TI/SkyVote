@@ -1,6 +1,6 @@
 <template>
   <div class="employee-status">
-    <div v-if="survey" class="toolbar">
+    <div v-if="ready" class="toolbar">
       <div class="search-box">
         <svg class="search-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
           <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6" />
@@ -29,7 +29,7 @@
       </div>
     </div>
 
-    <template v-if="survey">
+    <template v-if="ready">
       <div class="table-scroll">
         <table class="employee-table">
           <thead>
@@ -117,6 +117,7 @@
       </div>
     </template>
 
+    <p v-else-if="survey" class="empty-state">Pilih tanggal untuk melihat status pengisian pegawai pada hari tersebut.</p>
     <p v-else class="empty-state">Pilih survei tertentu (bukan "Semua Survei") untuk melihat detail pengisian pegawai.</p>
 
     <Teleport to="body">
@@ -203,6 +204,11 @@ const props = defineProps({
     type: [Number, String, null],
     default: null,
   },
+  // Quota is per day: fill counts are for this one date (YYYY-MM-DD).
+  tanggal: {
+    type: String,
+    default: "",
+  },
 });
 
 const store = useSurveyStore();
@@ -213,9 +219,10 @@ const page = ref(1);
 const pageSize = 10;
 
 const survey = computed(() => (props.surveyId ? store.findSurvey(props.surveyId) : null));
+const ready = computed(() => !!survey.value && !!props.tanggal);
 
 function fillCountFor(employee) {
-  return store.submissionCountForEmployeeSurvey(props.surveyId, employee.nama);
+  return store.submissionCountForEmployeeSurvey(props.surveyId, employee.nama, props.tanggal);
 }
 
 function fillBadgeClass(employee) {

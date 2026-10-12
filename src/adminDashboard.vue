@@ -23,10 +23,25 @@
             </option>
           </select>
         </div>
+        <div class="survey-filter">
+          <svg class="survey-filter-icon" width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+            <path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <input
+            v-model="selectedTanggal"
+            type="date"
+            class="survey-filter-select survey-filter-date"
+            :min="selectedSurvey?.tanggalMulai || undefined"
+            :max="selectedSurvey?.tanggalSelesai || undefined"
+            :disabled="noSurveySelected"
+            aria-label="Pilih tanggal"
+          />
+        </div>
       </div>
 
-      <p v-if="noSurveySelected" class="survey-required-warning">
-        ⚠️ Pilih survei terlebih dahulu untuk melihat data partisipasi.
+      <p v-if="noFilterSelected" class="survey-required-warning">
+        ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
 
       <template v-else>
@@ -88,8 +103,8 @@
         <h2 class="chart-title">Total Partisipasi per Departemen</h2>
       </div>
 
-      <p v-if="noSurveySelected" class="survey-required-warning">
-        ⚠️ Pilih survei terlebih dahulu untuk melihat data partisipasi.
+      <p v-if="noFilterSelected" class="survey-required-warning">
+        ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
 
       <template v-else>
@@ -137,7 +152,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
 
@@ -155,19 +170,38 @@ onMounted(async () => {
 });
 
 const selectedSurveyId = ref(null);
+// maxPengisian is a per-day limit, so target/voting only make sense for one
+// chosen day.
+const selectedTanggal = ref("");
 
 const noSurveySelected = computed(() => !selectedSurveyId.value);
+const noFilterSelected = computed(() => !selectedSurveyId.value || !selectedTanggal.value);
 
 const selectedSurvey = computed(() =>
   selectedSurveyId.value ? store.findSurvey(selectedSurveyId.value) : null
 );
 
+// A date from the previous survey may fall outside the new survey's period.
+watch(selectedSurveyId, () => {
+  const survey = selectedSurvey.value;
+  const tanggal = selectedTanggal.value;
+  if (!survey || !tanggal) return;
+  if (
+    (survey.tanggalMulai && tanggal < survey.tanggalMulai) ||
+    (survey.tanggalSelesai && tanggal > survey.tanggalSelesai)
+  ) {
+    selectedTanggal.value = "";
+  }
+});
+
 const maxPengisian = computed(() => selectedSurvey.value?.maxPengisian ?? 1);
 
 const filteredSubmissions = computed(() => {
   const survey = selectedSurvey.value;
-  if (!survey) return [];
-  return store.submissions.filter((s) => s.surveyId === survey.id);
+  if (!survey || !selectedTanggal.value) return [];
+  return store.submissions.filter(
+    (s) => s.surveyId === survey.id && s.tanggal === selectedTanggal.value
+  );
 });
 
 const shortLabels = {
@@ -325,6 +359,15 @@ function deptBarWidth(value) {
   color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
+}
+
+.survey-filter-date {
+  min-width: 140px;
+}
+
+.survey-filter-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .survey-required-warning {

@@ -9,14 +9,14 @@
         </p>
       </div>
       <div class="export-actions">
-        <button type="button" class="btn-export" :disabled="noSurveySelected" @click="exportToPdf">
+        <button type="button" class="btn-export" :disabled="noFilterSelected" @click="exportToPdf">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
             <path d="M4 14v2a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
           Ekspor ke PDF
         </button>
-        <button type="button" class="btn-export btn-export-excel" :disabled="noSurveySelected" @click="exportToExcel">
+        <button type="button" class="btn-export btn-export-excel" :disabled="noFilterSelected" @click="exportToExcel">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
             <path d="M4 14v2a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -165,8 +165,26 @@
             <div>
               <h2 class="card-title">Rekapitulasi Partisipasi per Divisi</h2>
               <p class="card-subtitle">
-                Sebaran pengisian survei berdasarkan unit kerja / divisi.
+                Sebaran pengisian survei berdasarkan unit kerja / divisi pada satu tanggal. Target
+                dihitung per hari (jumlah pegawai &times; max pengisian per hari).
               </p>
+            </div>
+            <div class="card-header-actions">
+              <div class="survey-filter">
+                <svg class="survey-filter-icon" width="14" height="14" viewBox="0 0 20 20" fill="none">
+                  <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+                <input
+                  v-model="selectedTanggal"
+                  type="date"
+                  class="survey-filter-select survey-filter-date"
+                  :min="selectedSurveyFilter?.tanggalMulai || undefined"
+                  :max="selectedSurveyFilter?.tanggalSelesai || undefined"
+                  :disabled="noSurveySelected"
+                  aria-label="Pilih tanggal"
+                />
+              </div>
             </div>
           </div>
 
@@ -320,9 +338,9 @@
                     </td>
                   </tr>
                 </template>
-                <tr v-if="noSurveySelected">
+                <tr v-if="noFilterSelected">
                   <td colspan="15" class="empty-row empty-row-warning">
-                    ⚠️ Pilih survei terlebih dahulu untuk melihat data partisipasi.
+                    ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
                   </td>
                 </tr>
                 <tr v-else-if="deptTable.rows.value.length === 0">
@@ -405,7 +423,10 @@ function departmentDetailLink(deptName) {
   return {
     name: "admin-department-detail",
     params: { department: deptName },
-    query: selectedSurveyFilterId.value ? { survey: selectedSurveyFilterId.value } : {},
+    query: {
+      ...(selectedSurveyFilterId.value ? { survey: selectedSurveyFilterId.value } : {}),
+      ...(selectedTanggal.value ? { tanggal: selectedTanggal.value } : {}),
+    },
   };
 }
 
@@ -426,7 +447,7 @@ function buildDeptRow(key, deptNames) {
   const targetNonOrganik = pegawaiNonOrganik * maxPengisian;
   const targetTotal = targetOrganik + targetNonOrganik;
 
-  const scoped = filteredSubmissions.value.filter((s) => deptSet.has(s.departemen));
+  const scoped = deptSubmissions.value.filter((s) => deptSet.has(s.departemen));
   const pengisianOrganik = scoped.filter((s) => s.jenisPegawai === "Organik").length;
   const pengisianNonOrganik = scoped.length - pengisianOrganik;
   const pengisianTotal = scoped.length;
@@ -520,10 +541,58 @@ const selectedSurveyFilterRange = computed(() => {
 
 const noSurveySelected = computed(() => !selectedSurveyFilterId.value);
 
+// maxPengisian is a per-day limit, so the per-Divisi view (target vs voting)
+// is only meaningful for one chosen day.
+const selectedTanggal = ref(typeof route.query.tanggal === "string" ? route.query.tanggal : "");
+const noFilterSelected = computed(() => noSurveySelected.value || !selectedTanggal.value);
+
+// A date from the previous survey may fall outside the new survey's period.
+watch(selectedSurveyFilterId, () => {
+  const survey = selectedSurveyFilter.value;
+  const tanggal = selectedTanggal.value;
+  if (!survey || !tanggal) return;
+  if (
+    (survey.tanggalMulai && tanggal < survey.tanggalMulai) ||
+    (survey.tanggalSelesai && tanggal > survey.tanggalSelesai)
+  ) {
+    selectedTanggal.value = "";
+  }
+});
+
 const filteredSubmissions = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey) return [];
   return store.submissions.filter((s) => s.surveyId === survey.id);
+});
+
+const deptSubmissions = computed(() =>
+  selectedTanggal.value
+    ? filteredSubmissions.value.filter((s) => s.tanggal === selectedTanggal.value)
+    : []
+);
+
+function localToday() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Every day of the survey's period up to today (or its end), so the per-Tanggal
+// table also lists days with zero submissions — each day carries its own
+// per-day target. Empty when the survey has no fixed period; the table then
+// only lists days that have submissions.
+const periodDates = computed(() => {
+  const survey = selectedSurveyFilter.value;
+  if (!survey?.tanggalMulai || !survey?.tanggalSelesai) return [];
+  const last = survey.tanggalSelesai < localToday() ? survey.tanggalSelesai : localToday();
+  const dates = [];
+  let cursor = Date.parse(`${survey.tanggalMulai}T00:00:00Z`);
+  const end = Date.parse(`${last}T00:00:00Z`);
+  while (cursor <= end && dates.length < 1000) {
+    dates.push(new Date(cursor).toISOString().slice(0, 10));
+    cursor += 24 * 60 * 60 * 1000;
+  }
+  return dates;
 });
 
 function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
@@ -559,9 +628,11 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
     const pegawaiOrganik = first?.pegawaiOrganik ?? 0;
     const pegawaiNonOrganik = first?.pegawaiNonOrganik ?? 0;
     const pegawaiTotal = first?.pegawaiTotal ?? 0;
-    const targetOrganik = first?.targetOrganik ?? 0;
-    const targetNonOrganik = first?.targetNonOrganik ?? 0;
-    const targetTotal = first?.targetTotal ?? 0;
+    // Each row is one day with its own per-day target, so the accumulated
+    // target is the sum across days.
+    const targetOrganik = list.reduce((sum, r) => sum + r.targetOrganik, 0);
+    const targetNonOrganik = list.reduce((sum, r) => sum + r.targetNonOrganik, 0);
+    const targetTotal = targetOrganik + targetNonOrganik;
 
     return {
       pegawaiOrganik,
@@ -589,9 +660,10 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
 const dateTable = useParticipationTable((s) => s.tanggal, {
   pageSize: 6,
   sort: (a, b) => (a.key < b.key ? 1 : -1),
+  allKeys: periodDates,
 });
 const deptRows = computed(() =>
-  noSurveySelected.value
+  noFilterSelected.value
     ? []
     : ORG_PARENT_KEYS.map((key) => buildDeptRow(key, ORG_CHILDREN_BY_PARENT.get(key) ?? []))
 );
@@ -680,7 +752,7 @@ function drawSectionDividers(data) {
 }
 
 function exportToPdf() {
-  if (noSurveySelected.value) return;
+  if (noFilterSelected.value) return;
   const doc = new jsPDF({ orientation: "landscape" });
   const surveyLabel = selectedSurveyFilter.value.nama;
 
@@ -718,7 +790,7 @@ function exportToPdf() {
 
   doc.addPage();
   doc.setFontSize(12);
-  doc.text("Rekapitulasi Partisipasi per Divisi", 14, 15);
+  doc.text(`Rekapitulasi Partisipasi per Divisi - ${formatDate(selectedTanggal.value)}`, 14, 15);
   autoTable(doc, {
     head: deptHead,
     body: buildReportBody(deptTable.rows.value, deptTable.totals.value, (key) => key),
@@ -814,7 +886,7 @@ function buildExcelSheet(labelHeader, rows, totals, keyFormatter) {
 }
 
 function exportToExcel() {
-  if (noSurveySelected.value) return;
+  if (noFilterSelected.value) return;
   const surveyLabel = selectedSurveyFilter.value.nama;
 
   const wb = XLSX.utils.book_new();
@@ -826,7 +898,7 @@ function exportToExcel() {
   XLSX.utils.book_append_sheet(
     wb,
     buildExcelSheet("Divisi", deptTable.rows.value, deptTable.totals.value, (key) => key),
-    "Per Divisi"
+    `Per Divisi ${selectedTanggal.value}`
   );
 
   const slug = surveyLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -988,6 +1060,15 @@ function exportToExcel() {
   color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
+}
+
+.survey-filter-date {
+  min-width: 140px;
+}
+
+.survey-filter-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .survey-filter-range {

@@ -126,7 +126,7 @@
                   </svg>
                   <span class="pengisian-count">{{ submissionCount(survey) }} pengisian</span>
                 </div>
-                <span class="pengisian-limit">Maks {{ survey.maxPengisian }}x / pegawai</span>
+                <span class="pengisian-limit">Maks {{ survey.maxPengisian }}x / pegawai / hari</span>
               </td>
               <td class="col-action">
                 <div class="row-actions">

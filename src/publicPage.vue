@@ -144,6 +144,7 @@
             </div>
             <p v-if="selectedEmployee && selectedSurvey" class="name-quota-info" :class="quotaBadgeClass">
               Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ selectedSurvey.maxPengisian }}
+              pada tanggal ini
             </p>
           </div>
 
@@ -213,7 +214,8 @@
                 />
                 <path d="M10 8v4M10 14.5v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
               </svg>
-              Anda sudah mencapai batas maksimal pengisian survei ini ({{ selectedSurvey?.maxPengisian }} kali).
+              Anda sudah mencapai batas maksimal pengisian survei ini pada tanggal tersebut
+              ({{ selectedSurvey?.maxPengisian }} kali per hari).
             </p>
           </div>
 
@@ -363,13 +365,18 @@ const maxDate = computed(() => selectedSurvey.value?.tanggalSelesai || undefined
 
 const employeeSubmissionCount = computed(() =>
   selectedSurveyId.value && selectedEmployee.value
-    ? store.submissionCountForEmployeeSurvey(selectedSurveyId.value, selectedEmployee.value.nama)
+    ? store.submissionCountForEmployeeSurvey(
+        selectedSurveyId.value,
+        selectedEmployee.value.nama,
+        form.tanggal
+      )
     : 0
 );
 
+// maxPengisian is a per-day limit: quota is counted for the date picked above.
 const quotaFull = computed(() =>
   selectedSurveyId.value && selectedEmployee.value
-    ? store.isSurveyFullForEmployee(selectedSurveyId.value, selectedEmployee.value.nama)
+    ? store.isSurveyFullForEmployee(selectedSurveyId.value, selectedEmployee.value.nama, form.tanggal)
     : false
 );
 

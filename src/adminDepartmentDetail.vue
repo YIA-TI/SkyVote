@@ -19,13 +19,26 @@
           <h2 class="card-title">Status Pengisian Pegawai</h2>
           <p class="card-subtitle" v-if="selectedSurvey">
             {{ selectedSurvey.nama }}
-            <span class="card-subtitle-range">&middot; Maks {{ selectedSurvey.maxPengisian }}x per pegawai</span>
+            <span class="card-subtitle-range">&middot; Maks {{ selectedSurvey.maxPengisian }}x per pegawai per hari</span>
           </p>
           <p class="card-subtitle" v-else>Belum ada survei dipilih.</p>
         </div>
+        <input
+          v-model="selectedTanggal"
+          type="date"
+          class="date-filter"
+          :min="selectedSurvey?.tanggalMulai || undefined"
+          :max="selectedSurvey?.tanggalSelesai || undefined"
+          :disabled="!selectedSurvey"
+          aria-label="Pilih tanggal"
+        />
       </div>
 
-      <EmployeeSurveyStatusTable :employees="employeesInDept" :survey-id="selectedSurveyId" />
+      <EmployeeSurveyStatusTable
+        :employees="employeesInDept"
+        :survey-id="selectedSurveyId"
+        :tanggal="selectedTanggal"
+      />
     </div>
   </div>
 </template>
@@ -52,13 +65,20 @@ watch(
   }
 );
 
+// Quota is per day, so fill status is shown for one chosen day (carried over
+// from the report page via ?tanggal=).
+const selectedTanggal = ref(typeof route.query.tanggal === "string" ? route.query.tanggal : "");
+
 const selectedSurvey = computed(() =>
   selectedSurveyId.value ? store.findSurvey(selectedSurveyId.value) : null
 );
 
 const backToReportLink = computed(() => ({
   path: "/admin/report",
-  query: selectedSurveyId.value ? { survey: selectedSurveyId.value } : {},
+  query: {
+    ...(selectedSurveyId.value ? { survey: selectedSurveyId.value } : {}),
+    ...(selectedTanggal.value ? { tanggal: selectedTanggal.value } : {}),
+  },
 }));
 
 const employeesInDept = computed(() =>
@@ -146,6 +166,22 @@ const employeesInDept = computed(() =>
 
 .card-subtitle-range {
   color: var(--color-text-muted);
+}
+
+.date-filter {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.date-filter:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 </style>

@@ -215,7 +215,7 @@
 
         <div class="field-row">
           <div class="field">
-            <label class="field-label" for="max-pengisian">Max Pengisian</label>
+            <label class="field-label" for="max-pengisian">Max Pengisian per Hari</label>
             <div class="input-wrap">
               <svg class="input-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
                 <path
@@ -235,8 +235,9 @@
               />
             </div>
             <p class="field-helper">
-              Batas maksimal satu pegawai mengisi survei ini (standar: 20 kali). Pegawai lain tetap
-              punya kuota sendiri-sendiri.
+              Batas maksimal satu pegawai mengisi survei ini dalam satu hari, berdasarkan tanggal yang
+              dipilih saat mengisi (standar: 20 kali per hari). Pegawai lain tetap punya kuota
+              sendiri-sendiri.
             </p>
           </div>
           <div class="field">
