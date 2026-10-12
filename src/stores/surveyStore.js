@@ -293,10 +293,11 @@ export const useSurveyStore = defineStore("survey", {
       return Number(data) || 0;
     },
 
-    // ── Public "Hasil Input Bukti" page (no login) ───────────────────────
-    // Backed by narrow RPCs (see 022 migration); these return data directly
-    // instead of touching store.submissions / store.surveys.
-    async fetchPublicBuktiSurveys() {
+    // ── Public report page /hasil-bukti (no login) ───────────────────────
+    // Backed by narrow RPCs that only return aggregate numbers (see 027
+    // migration); they return data directly instead of touching
+    // store.surveys / store.submissions.
+    async fetchPublicReportSurveys() {
       const { data, error } = await supabase.rpc("public_bukti_surveys");
       if (error) throw new Error(error.message);
       return data.map((row) => ({
@@ -305,41 +306,30 @@ export const useSurveyStore = defineStore("survey", {
         tanggalMulai: row.tanggal_mulai ?? "",
         tanggalSelesai: row.tanggal_selesai ?? "",
         status: row.status,
+        maxPengisian: row.max_pengisian,
       }));
     },
 
-    async fetchPublicBukti(
-      surveyId,
-      { search = "", limit = 10, offset = 0, tanggalDari = "", tanggalSampai = "" } = {}
-    ) {
-      const { data, error } = await supabase.rpc("public_bukti_list", {
+    // Counts grouped by tanggal / departemen / jenis, expanded into
+    // submission-shaped rows (one per submission, without any personal data)
+    // so the report can use the same grouping code as the admin report.
+    async fetchPublicReportSubmissions(surveyId) {
+      const { data, error } = await supabase.rpc("public_report_counts", {
         p_survey_id: surveyId,
-        p_search: search,
-        p_limit: limit,
-        p_offset: offset,
-        p_tanggal_dari: tanggalDari || null,
-        p_tanggal_sampai: tanggalSampai || null,
       });
       if (error) throw new Error(error.message);
-      return {
-        total: data.length ? Number(data[0].total_count) : 0,
-        rows: data.map((row) => ({ ...mapSubmission(row), surveyId })),
-      };
-    },
-
-    // Signed URLs (1 hour) for a batch of storage paths, as { path: url }.
-    async fetchBuktiSignedUrls(paths) {
-      const unique = [...new Set(paths.filter(Boolean))];
-      if (unique.length === 0) return {};
-      const { data, error } = await supabase.storage
-        .from(BUKTI_BUCKET)
-        .createSignedUrls(unique, 3600);
-      if (error) throw new Error(error.message);
-      const urls = {};
-      for (const item of data) {
-        if (item.signedUrl) urls[item.path] = item.signedUrl;
+      const rows = [];
+      for (const row of data) {
+        for (let i = 0; i < row.jumlah; i++) {
+          rows.push({
+            surveyId,
+            tanggal: row.tanggal,
+            departemen: row.departemen,
+            jenisPegawai: row.jenis_pegawai,
+          });
+        }
       }
-      return urls;
+      return rows;
     },
 
     async fetchEmployees() {

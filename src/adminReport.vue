@@ -44,7 +44,7 @@
                 </svg>
                 <select v-model="selectedSurveyFilterId" class="survey-filter-select">
                   <option v-if="!selectedSurveyFilterId" :value="null" disabled>Pilih Survei</option>
-                  <option v-for="survey in store.surveys" :key="survey.id" :value="survey.id">
+                  <option v-for="survey in surveyOptions" :key="survey.id" :value="survey.id">
                     {{ survey.nama }}
                   </option>
                 </select>
@@ -312,11 +312,14 @@
                             <tr v-for="child in childrenBreakdown(row.key)" :key="child.key">
                               <td class="divisi-cell-name">
                                 <RouterLink
+                                  v-if="!publicMode"
                                   class="dept-link"
                                   :to="departmentDetailLink(child.key)"
                                 >
                                   {{ shortDeptName(child.key) }}
                                 </RouterLink>
+                                <!-- Public view: no drill-down to which employees haven't filled. -->
+                                <span v-else>{{ shortDeptName(child.key) }}</span>
                               </td>
                               <td>{{ child.pegawaiOrganik }}</td>
                               <td>{{ child.targetOrganik }}</td>
@@ -407,10 +410,37 @@ import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
 
+// publicMode: the same report rendered on the public /hasil-bukti page. It
+// reads aggregate counts through RPCs (anonymous visitors can't read
+// submissions), only lists surveys the admin ticked "tampil publik" for, and
+// drops the links to the per-employee detail pages.
+const props = defineProps({
+  publicMode: { type: Boolean, default: false },
+});
+
 const store = useSurveyStore();
 const route = useRoute();
 
-onMounted(() => store.ensureBaseData());
+const publicSurveys = ref([]);
+const publicSubmissions = ref([]);
+
+const surveyOptions = computed(() => (props.publicMode ? publicSurveys.value : store.surveys));
+
+onMounted(async () => {
+  // Employees (public read) are needed for the Jumlah / Target columns.
+  await store.ensureBaseData();
+  if (props.publicMode) {
+    try {
+      publicSurveys.value = await store.fetchPublicReportSurveys();
+      if (!selectedSurveyFilterId.value) {
+        selectedSurveyFilterId.value = publicSurveys.value[0]?.id ?? null;
+      }
+    } catch (err) {
+      console.error("Gagal memuat daftar survei:", err);
+    }
+  }
+});
+
 
 const expandedDept = ref(null);
 
@@ -529,8 +559,31 @@ function useRowsTable(rowsRef, { pageSize = 10 } = {}) {
 
 const selectedSurveyFilterId = ref(route.query.survey ? Number(route.query.survey) : null);
 
+// Public mode: fetch the aggregate counts whenever the survey changes. The
+// latest-request guard stops a slow response for a previous survey from
+// overwriting the one currently selected.
+let publicRequest = 0;
+
+watch(
+  () => (props.publicMode ? selectedSurveyFilterId.value : null),
+  async (surveyId) => {
+    const request = ++publicRequest;
+    publicSubmissions.value = [];
+    if (!surveyId) return;
+    try {
+      const rows = await store.fetchPublicReportSubmissions(surveyId);
+      if (request === publicRequest) publicSubmissions.value = rows;
+    } catch (err) {
+      console.error("Gagal memuat data survei:", err);
+    }
+  },
+  { immediate: true }
+);
+
 const selectedSurveyFilter = computed(() =>
-  selectedSurveyFilterId.value ? store.findSurvey(selectedSurveyFilterId.value) : null
+  selectedSurveyFilterId.value
+    ? surveyOptions.value.find((s) => s.id === selectedSurveyFilterId.value) ?? null
+    : null
 );
 
 const selectedSurveyFilterRange = computed(() => {
@@ -562,7 +615,8 @@ watch(selectedSurveyFilterId, () => {
 const filteredSubmissions = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey) return [];
-  return store.submissions.filter((s) => s.surveyId === survey.id);
+  const source = props.publicMode ? publicSubmissions.value : store.submissions;
+  return source.filter((s) => s.surveyId === survey.id);
 });
 
 const deptSubmissions = computed(() =>
