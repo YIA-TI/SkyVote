@@ -463,9 +463,9 @@ function buildDeptRow(key, deptNames) {
     pengisianOrganik,
     pengisianNonOrganik,
     pengisianTotal,
-    gapOrganik: targetOrganik - pengisianOrganik,
-    gapNonOrganik: targetNonOrganik - pengisianNonOrganik,
-    gapTotal: targetTotal - pengisianTotal,
+    gapOrganik: pengisianOrganik - targetOrganik,
+    gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
+    gapTotal: pengisianTotal - targetTotal,
     persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
     persenNonOrganik:
       targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
@@ -514,9 +514,9 @@ function useRowsTable(rowsRef, { pageSize = 10 } = {}) {
       pengisianOrganik,
       pengisianNonOrganik,
       pengisianTotal,
-      gapOrganik: targetOrganik - pengisianOrganik,
-      gapNonOrganik: targetNonOrganik - pengisianNonOrganik,
-      gapTotal: targetTotal - pengisianTotal,
+      gapOrganik: pengisianOrganik - targetOrganik,
+      gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
+      gapTotal: pengisianTotal - targetTotal,
       persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
       persenNonOrganik:
         targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
@@ -644,9 +644,9 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
       pengisianOrganik,
       pengisianNonOrganik,
       pengisianTotal,
-      gapOrganik: targetOrganik - pengisianOrganik,
-      gapNonOrganik: targetNonOrganik - pengisianNonOrganik,
-      gapTotal: targetTotal - pengisianTotal,
+      gapOrganik: pengisianOrganik - targetOrganik,
+      gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
+      gapTotal: pengisianTotal - targetTotal,
       persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
       persenNonOrganik:
         targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
@@ -669,9 +669,11 @@ const deptRows = computed(() =>
 );
 const deptTable = useRowsTable(deptRows, { pageSize: 10 });
 
+// Gap = voting - target. Below target -> negative and red; target met or
+// exceeded -> green.
 function gapValueClass(value) {
-  if (value > 0) return "gap-done";
-  return "gap-pending";
+  if (value < 0) return "gap-pending";
+  return "gap-done";
 }
 
 function formatGap(value) {

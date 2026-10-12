@@ -239,9 +239,10 @@ export const useSurveyStore = defineStore("survey", {
             pengisianOrganik: organik,
             pengisianNonOrganik: nonOrganik,
             pengisianTotal,
-            gapOrganik: targetOrganik - organik,
-            gapNonOrganik: targetNonOrganik - nonOrganik,
-            gapTotal: targetTotal - pengisianTotal,
+            // Gap = voting - target: negative (red) while the target isn't met.
+            gapOrganik: organik - targetOrganik,
+            gapNonOrganik: nonOrganik - targetNonOrganik,
+            gapTotal: pengisianTotal - targetTotal,
             persenOrganik: targetOrganik > 0 ? Math.round((organik / targetOrganik) * 1000) / 10 : 0,
             persenNonOrganik:
               targetNonOrganik > 0 ? Math.round((nonOrganik / targetNonOrganik) * 1000) / 10 : 0,
