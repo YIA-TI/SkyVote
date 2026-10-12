@@ -45,6 +45,41 @@
               autocomplete="off"
             />
           </div>
+
+          <div class="field date-field">
+            <label class="field-label" for="tanggal-dari">Dari tanggal</label>
+            <input
+              id="tanggal-dari"
+              v-model="tanggalDari"
+              type="date"
+              class="control"
+              :min="selectedSurvey?.tanggalMulai || undefined"
+              :max="tanggalSampai || selectedSurvey?.tanggalSelesai || undefined"
+              :disabled="!selectedSurveyId"
+            />
+          </div>
+
+          <div class="field date-field">
+            <label class="field-label" for="tanggal-sampai">Sampai tanggal</label>
+            <input
+              id="tanggal-sampai"
+              v-model="tanggalSampai"
+              type="date"
+              class="control"
+              :min="tanggalDari || selectedSurvey?.tanggalMulai || undefined"
+              :max="selectedSurvey?.tanggalSelesai || undefined"
+              :disabled="!selectedSurveyId"
+            />
+          </div>
+
+          <button
+            v-if="tanggalDari || tanggalSampai"
+            type="button"
+            class="btn-reset"
+            @click="resetDates"
+          >
+            Reset tanggal
+          </button>
         </div>
 
         <p v-if="errorMessage" class="state-message state-error">{{ errorMessage }}</p>
@@ -164,7 +199,22 @@ const surveysLoading = ref(true);
 const selectedSurveyId = ref(null);
 
 const search = ref("");
+// Inclusive range on the date the employee picked when filling the survey.
+const tanggalDari = ref("");
+const tanggalSampai = ref("");
 const page = ref(1);
+
+const selectedSurvey = computed(() =>
+  surveys.value.find((s) => s.id === selectedSurveyId.value) ?? null
+);
+
+function resetDates() {
+  tanggalDari.value = "";
+  tanggalSampai.value = "";
+}
+
+// A range picked for one survey doesn't carry over to another.
+watch(selectedSurveyId, resetDates);
 const rows = ref([]);
 const total = ref(0);
 const rowsLoading = ref(false);
@@ -230,7 +280,7 @@ watch(search, (value) => {
   }, 300);
 });
 
-watch([selectedSurveyId, debouncedSearch], () => {
+watch([selectedSurveyId, debouncedSearch, tanggalDari, tanggalSampai], () => {
   // Already on page 1: load directly. Otherwise resetting the page triggers
   // the page watcher below, so don't load twice.
   if (page.value === 1) loadRows();
@@ -257,6 +307,8 @@ async function loadRows() {
       search: debouncedSearch.value,
       limit: pageSize,
       offset: offset.value,
+      tanggalDari: tanggalDari.value,
+      tanggalSampai: tanggalSampai.value,
     });
     if (request !== latestRequest) return;
     rows.value = result.rows;
@@ -378,6 +430,29 @@ function closeLightboxOnEscape(event) {
 
 .search-field {
   flex: 1 1 220px;
+}
+
+.date-field {
+  flex: 0 1 160px;
+}
+
+.btn-reset {
+  align-self: flex-end;
+  height: 40px;
+  padding: 0 14px;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .field-label {

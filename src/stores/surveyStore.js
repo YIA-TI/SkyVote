@@ -307,12 +307,17 @@ export const useSurveyStore = defineStore("survey", {
       }));
     },
 
-    async fetchPublicBukti(surveyId, { search = "", limit = 10, offset = 0 } = {}) {
+    async fetchPublicBukti(
+      surveyId,
+      { search = "", limit = 10, offset = 0, tanggalDari = "", tanggalSampai = "" } = {}
+    ) {
       const { data, error } = await supabase.rpc("public_bukti_list", {
         p_survey_id: surveyId,
         p_search: search,
         p_limit: limit,
         p_offset: offset,
+        p_tanggal_dari: tanggalDari || null,
+        p_tanggal_sampai: tanggalSampai || null,
       });
       if (error) throw new Error(error.message);
       return {
