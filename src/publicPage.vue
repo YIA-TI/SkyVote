@@ -1060,8 +1060,8 @@ async function handleSubmit() {
 }
 
 .slot-badge-staff {
-  background-color: #1e3a8a;
-  color: #93c5fd;
+  background-color: #facc15;
+  color: #422006;
 }
 
 .remove-optional-file {
