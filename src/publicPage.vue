@@ -91,9 +91,7 @@
                 v-model="form.tanggal"
                 type="date"
                 class="input"
-                readonly
-                tabindex="-1"
-                required
+                disabled
               />
             </div>
             <p class="field-hint">Tanggal pengisian otomatis mengikuti hari ini dan tidak dapat diubah.</p>
@@ -627,9 +625,10 @@ async function handleSubmit() {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.input:read-only {
+.input:disabled {
   color: var(--color-text-secondary);
   background-color: var(--color-surface);
+  opacity: 1;
   cursor: not-allowed;
 }
 
