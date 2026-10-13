@@ -199,6 +199,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
+import { formatWibTime } from "../lib/wib";
 import { shortDeptName } from "../orgStructure";
 import { jenisPegawaiLabel, useSurveyStore } from "../stores/surveyStore";
 
@@ -249,10 +250,7 @@ function isCompleted(employee) {
 }
 
 function submissionTime(submission) {
-  if (!submission.createdAt) return "";
-  const date = new Date(submission.createdAt);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return formatWibTime(submission.createdAt);
 }
 
 const detailEmployee = ref(null);

@@ -245,6 +245,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { formatWibDateTime, wibToday } from "./lib/wib";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
@@ -487,7 +488,7 @@ function exportToPdf() {
   cursorY += surveyLines.length * 5;
   doc.text(`Total Responden: ${totalResponden.value}`, 14, cursorY);
   cursorY += 5;
-  doc.text(`Diekspor pada: ${new Date().toLocaleString("id-ID")}`, 14, cursorY);
+  doc.text(`Diekspor pada: ${formatWibDateTime()}`, 14, cursorY);
   cursorY += 12;
 
   if (trendPoints.value.length > 0) {
@@ -541,7 +542,7 @@ function exportToPdf() {
     cursorY = doc.lastAutoTable.finalY + 10;
   }
 
-  const dateStamp = new Date().toISOString().slice(0, 10);
+  const dateStamp = wibToday();
   doc.save(`hasil-survei-${slugify(surveyLabel)}-${dateStamp}.pdf`);
 }
 
@@ -591,7 +592,7 @@ function exportToExcel() {
   }
   XLSX.utils.book_append_sheet(wb, resultsWs, "Hasil Survei");
 
-  const dateStamp = new Date().toISOString().slice(0, 10);
+  const dateStamp = wibToday();
   XLSX.writeFile(wb, `hasil-survei-${slugify(surveyLabel)}-${dateStamp}.xlsx`);
 }
 </script>

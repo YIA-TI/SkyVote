@@ -85,21 +85,21 @@
           </div>
 
           <div class="field">
-            <label class="field-label" for="tanggal">Pilih tanggal</label>
-            <div class="input-wrap" @click="openDatePicker">
+            <label class="field-label" for="tanggal">Tanggal</label>
+            <!-- Only today is allowed, so it's shown, not picked. A native date
+                 input can't enforce that: iOS Safari ignores min/max. -->
+            <div class="input-wrap">
               <svg class="input-icon" width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
                 <path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
               <input
                 id="tanggal"
-                ref="tanggalInput"
-                v-model="form.tanggal"
-                type="date"
-                class="input"
-                :min="minDate"
-                :max="maxDate"
-                required
+                :value="tanggalLabel"
+                type="text"
+                class="input input-readonly"
+                readonly
+                aria-readonly="true"
               />
             </div>
           </div>
@@ -254,6 +254,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
+import { wibToday } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
@@ -265,7 +266,6 @@ const surveys = computed(() => store.activeAvailableSurveys);
 const currentYear = new Date().getFullYear();
 
 const selectedSurveyId = ref(null);
-const tanggalInput = ref(null);
 const submitting = ref(false);
 
 // External surveys take a required proof photo plus one optional extra photo.
@@ -276,12 +276,8 @@ const uploadSlots = [
 const fileInputs = {};
 const dragging = reactive({ file: false, file2: false });
 
-// Today's date in WIB (the server's timezone). toISOString() would give the UTC
-// date, which is still "yesterday" between 00:00 and 07:00 WIB.
-const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
-
 const form = reactive({
-  tanggal: today,
+  tanggal: wibToday(),
   file: null,
   file2: null,
 });
@@ -294,6 +290,8 @@ onMounted(async () => {
 
   // Poll surveys every 3 seconds for real-time updates
   pollInterval = setInterval(async () => {
+    // Keeps the shown date (and the per-day quota) right after midnight.
+    form.tanggal = wibToday();
     try {
       await store.fetchSurveys();
     } catch (err) {
@@ -381,8 +379,15 @@ watch(selectedSurveyId, async (id) => {
 
 // Employees can only fill the survey for today. (The survey list already hides
 // surveys whose period doesn't include today, so today is always in range.)
-const minDate = computed(() => today);
-const maxDate = computed(() => today);
+const tanggalLabel = computed(() =>
+  new Date(`${form.tanggal}T00:00:00+07:00`).toLocaleDateString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
+);
 
 // Anonymous visitors can't read the submissions table, so the real count for
 // (survey, employee, date) comes from an RPC. Re-fetched whenever any of the
@@ -445,17 +450,7 @@ const canSubmit = computed(() => {
 
 watch(selectedSurveyId, () => {
   for (const { key } of uploadSlots) clearFile(key);
-  if (minDate.value && form.tanggal < minDate.value) form.tanggal = minDate.value;
-  if (maxDate.value && form.tanggal > maxDate.value) form.tanggal = maxDate.value;
 });
-
-function openDatePicker() {
-  try {
-    tanggalInput.value?.showPicker();
-  } catch {
-    tanggalInput.value?.focus();
-  }
-}
 
 function triggerFilePicker(key) {
   fileInputs[key]?.click();
@@ -495,6 +490,8 @@ function handleDrop(event, key) {
 
 async function handleSubmit() {
   if (!canSubmit.value || !selectedSurveyId.value || submitting.value) return;
+  // The page may have been open across midnight: always submit for today.
+  form.tanggal = wibToday();
   submitting.value = true;
   const isInternal = selectedSurvey.value?.tipe === "Internal";
   try {
@@ -832,6 +829,16 @@ async function handleSubmit() {
   border-color: var(--color-primary);
   background-color: var(--color-surface);
   box-shadow: 0 0 0 3px rgba(0, 93, 172, 0.14);
+}
+
+/* Fixed value (today) — looks locked and never shows the keyboard-focus glow. */
+.input-readonly,
+.input-readonly:focus {
+  background-color: var(--color-bg);
+  border-color: var(--color-border);
+  box-shadow: none;
+  color: var(--color-text-secondary);
+  cursor: default;
 }
 
 .autocomplete {

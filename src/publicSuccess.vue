@@ -62,6 +62,7 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
+import { formatWibTime } from "./lib/wib";
 import { useSurveyStore } from "./stores/surveyStore";
 
 const store = useSurveyStore();
@@ -78,10 +79,8 @@ const surveyName = computed(() =>
     : "-"
 );
 const submissionTime = computed(() => {
-  if (!submission.value?.createdAt) return "";
-  const date = new Date(submission.value.createdAt);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  const time = formatWibTime(submission.value?.createdAt);
+  return time ? `${time} WIB` : "";
 });
 </script>
 

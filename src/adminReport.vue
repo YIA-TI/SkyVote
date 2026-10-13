@@ -429,6 +429,7 @@ import * as XLSX from "xlsx";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
+import { formatWibDateTime, wibToday } from "./lib/wib";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
@@ -699,12 +700,6 @@ const deptSubmissions = computed(() =>
     : []
 );
 
-function localToday() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 // Every day of the survey's period up to today (or its end), so the per-Tanggal
 // table also lists days with zero submissions — each day carries its own
 // per-day target. Empty when the survey has no fixed period; the table then
@@ -712,7 +707,8 @@ function localToday() {
 const periodDates = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey?.tanggalMulai || !survey?.tanggalSelesai) return [];
-  const last = survey.tanggalSelesai < localToday() ? survey.tanggalSelesai : localToday();
+  const today = wibToday();
+  const last = survey.tanggalSelesai < today ? survey.tanggalSelesai : today;
   const dates = [];
   let cursor = Date.parse(`${survey.tanggalMulai}T00:00:00Z`);
   const end = Date.parse(`${last}T00:00:00Z`);
@@ -890,7 +886,7 @@ function exportToPdf() {
   doc.text("Laporan Hasil Survei - SkyVote", 14, 15);
   doc.setFontSize(10);
   doc.text(`Survei: ${surveyLabel}`, 14, 21);
-  doc.text(`Diekspor pada: ${new Date().toLocaleString("id-ID")}`, 14, 26);
+  doc.text(`Diekspor pada: ${formatWibDateTime()}`, 14, 26);
 
   const dateHead = JSON.parse(JSON.stringify(reportGroupHead));
   dateHead[0][1].content = "Tanggal";
@@ -940,7 +936,7 @@ function exportToPdf() {
   });
 
   const slug = surveyLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const dateStamp = new Date().toISOString().slice(0, 10);
+  const dateStamp = wibToday();
   doc.save(`laporan-survei-${slug}-${dateStamp}.pdf`);
 }
 
@@ -1032,7 +1028,7 @@ function exportToExcel() {
   );
 
   const slug = surveyLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const dateStamp = new Date().toISOString().slice(0, 10);
+  const dateStamp = wibToday();
   XLSX.writeFile(wb, `laporan-survei-${slug}-${dateStamp}.xlsx`);
 }
 </script>

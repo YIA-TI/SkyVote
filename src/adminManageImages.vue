@@ -181,6 +181,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { BUKTI_BUCKET, supabase } from "./lib/supabaseClient";
+import { formatWibTime } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
@@ -217,10 +218,7 @@ function surveyNameFor(sub) {
 }
 
 function submissionTime(sub) {
-  if (!sub.createdAt) return "";
-  const date = new Date(sub.createdAt);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return formatWibTime(sub.createdAt);
 }
 
 const filteredSubmissions = computed(() => {

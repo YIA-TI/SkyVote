@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { compressImage } from "../lib/imageCompress";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
+import { wibToday } from "../lib/wib";
 
 // Display-only relabeling: "Non-Organik" pegawai are shown as "TAD" in the
 // UI, but the underlying data/enum value stays "Non-Organik" everywhere
@@ -185,7 +186,7 @@ export const useSurveyStore = defineStore("survey", {
     activeAvailableSurveys() {
       // WIB date, matching the DB check; the UTC date lags by a day from
       // 00:00 to 07:00 WIB.
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+      const today = wibToday();
       return this.surveys.filter((s) => {
         if (s.status !== "Aktif") return false;
         if (s.tanggalMulai && s.tanggalMulai > today) return false;
