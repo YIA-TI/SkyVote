@@ -1059,11 +1059,11 @@ function exportToExcel() {
   flex-shrink: 0;
 }
 
+/* The "Diperbarui ..." label hangs below the button (absolute) so it doesn't
+   make this group taller than the export buttons next to it. */
 .refresh-group {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
 }
 
 .btn-refresh {
@@ -1071,7 +1071,8 @@ function exportToExcel() {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 16px;
+  height: 40px;
+  padding: 0 16px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background-color: var(--color-surface);
@@ -1109,6 +1110,10 @@ function exportToExcel() {
 }
 
 .refresh-time {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
   font-size: 11px;
   text-align: center;
   color: var(--color-text-muted);
@@ -1120,7 +1125,8 @@ function exportToExcel() {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-  padding: 10px 18px;
+  height: 40px;
+  padding: 0 18px;
   border: none;
   border-radius: var(--radius-md);
   background-color: var(--color-primary);
@@ -1603,6 +1609,22 @@ function exportToExcel() {
   .btn-export {
     width: 100%;
     justify-content: center;
+  }
+
+  /* Stacked layout: the button fills the width and the label sits below it
+     in the normal flow instead of hanging out of the group. */
+  .refresh-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-refresh {
+    width: 100%;
+  }
+
+  .refresh-time {
+    position: static;
+    margin-top: 4px;
   }
 
   .report-card {
