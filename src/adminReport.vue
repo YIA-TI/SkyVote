@@ -9,6 +9,27 @@
         </p>
       </div>
       <div class="export-actions">
+        <div class="refresh-group">
+          <button
+            type="button"
+            class="btn-refresh"
+            :class="{ 'btn-refresh-loading': refreshing }"
+            :disabled="refreshing"
+            @click="refreshData"
+          >
+            <svg class="refresh-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
+              <path
+                d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3.2h-3.2"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            {{ refreshing ? "Memuat..." : "Muat Ulang" }}
+          </button>
+          <span v-if="lastUpdated" class="refresh-time">Diperbarui {{ lastUpdated }}</span>
+        </div>
         <button type="button" class="btn-export" :disabled="noFilterSelected" @click="exportToPdf">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
@@ -409,6 +430,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
+import { useToastStore } from "./stores/toastStore";
 
 // publicMode: the same report rendered on the public /report page. It
 // reads aggregate counts through RPCs (anonymous visitors can't read
@@ -419,12 +441,26 @@ const props = defineProps({
 });
 
 const store = useSurveyStore();
+const toast = useToastStore();
 const route = useRoute();
 
 const publicSurveys = ref([]);
 const publicSubmissions = ref([]);
 
 const surveyOptions = computed(() => (props.publicMode ? publicSurveys.value : store.surveys));
+
+// "Muat Ulang" button + the "Diperbarui HH.MM WIB" label next to it.
+const refreshing = ref(false);
+const lastUpdated = ref("");
+const updatedFormatter = new Intl.DateTimeFormat("id-ID", {
+  timeZone: "Asia/Jakarta",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function markUpdated() {
+  lastUpdated.value = `${updatedFormatter.format(new Date())} WIB`;
+}
 
 onMounted(async () => {
   // Employees (public read) are needed for the Jumlah / Target columns.
@@ -439,7 +475,39 @@ onMounted(async () => {
       console.error("Gagal memuat daftar survei:", err);
     }
   }
+  markUpdated();
 });
+
+// Re-fetches everything the report is built from. Public mode goes through
+// the aggregate RPCs; admin mode reloads the store's tables directly (admins
+// also get realtime updates, so this is mostly a manual fallback there).
+async function refreshData() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    if (props.publicMode) {
+      const [surveys] = await Promise.all([
+        store.fetchPublicReportSurveys(),
+        store.fetchEmployees(),
+      ]);
+      publicSurveys.value = surveys;
+      if (selectedSurveyFilterId.value && !surveys.some((s) => s.id === selectedSurveyFilterId.value)) {
+        // The survey was hidden or removed in the meantime; the survey watcher
+        // below clears the tables.
+        selectedSurveyFilterId.value = null;
+      } else {
+        await loadPublicSubmissions(selectedSurveyFilterId.value, { clear: false });
+      }
+    } else {
+      await Promise.all([store.fetchSurveys(), store.fetchEmployees(), store.fetchSubmissions()]);
+    }
+    markUpdated();
+  } catch (err) {
+    toast.show(err.message || "Gagal memuat ulang data.", "error");
+  } finally {
+    refreshing.value = false;
+  }
+}
 
 
 const expandedDept = ref(null);
@@ -564,15 +632,21 @@ const selectedSurveyFilterId = ref(route.query.survey ? Number(route.query.surve
 // overwriting the one currently selected.
 let publicRequest = 0;
 
+// `clear: false` keeps the old numbers on screen while a manual refresh is in
+// flight, instead of flashing empty tables. Errors propagate to the caller.
+async function loadPublicSubmissions(surveyId, { clear = true } = {}) {
+  const request = ++publicRequest;
+  if (clear) publicSubmissions.value = [];
+  if (!surveyId) return;
+  const rows = await store.fetchPublicReportSubmissions(surveyId);
+  if (request === publicRequest) publicSubmissions.value = rows;
+}
+
 watch(
   () => (props.publicMode ? selectedSurveyFilterId.value : null),
   async (surveyId) => {
-    const request = ++publicRequest;
-    publicSubmissions.value = [];
-    if (!surveyId) return;
     try {
-      const rows = await store.fetchPublicReportSubmissions(surveyId);
-      if (request === publicRequest) publicSubmissions.value = rows;
+      await loadPublicSubmissions(surveyId);
     } catch (err) {
       console.error("Gagal memuat data survei:", err);
     }
@@ -983,6 +1057,62 @@ function exportToExcel() {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.refresh-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  border-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.btn-refresh:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.btn-refresh-loading .refresh-icon {
+  animation: refresh-spin 0.8s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-refresh-loading .refresh-icon {
+    animation: none;
+  }
+}
+
+.refresh-time {
+  font-size: 11px;
+  text-align: center;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .btn-export {
