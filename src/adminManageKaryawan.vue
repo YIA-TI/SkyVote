@@ -183,6 +183,11 @@
                   placeholder="Nama lengkap pegawai"
                   required
                 />
+                <p v-if="nameChanged" class="field-warning" role="status">
+                  Isian survei sebelumnya dicocokkan dengan pegawai lewat nama. Setelah nama diubah,
+                  isian lama tidak lagi terhubung ke pegawai ini, sehingga kuota harian dan daftar
+                  "Belum Mengisi" bisa menjadi keliru.
+                </p>
               </div>
 
               <div class="field">
@@ -191,6 +196,11 @@
                   <option value="" disabled>Pilih unit kerja</option>
                   <option v-for="unit in unitOptions" :key="unit" :value="unit">{{ shortDeptName(unit) }}</option>
                 </select>
+                <p v-if="unitChanged" class="field-warning" role="status">
+                  Hasil survei yang sudah masuk <strong>tidak ikut pindah</strong>: isian sebelumnya tetap
+                  tercatat di unit lama ({{ shortDeptName(original.unitKerja) }}), hanya isian baru yang
+                  masuk ke unit baru. Laporan per unit untuk hari-hari sebelumnya bisa bergeser.
+                </p>
               </div>
 
               <div class="field">
@@ -199,6 +209,10 @@
                   <option value="Organik">Organik</option>
                   <option value="Non-Organik">TAD (Non-Organik)</option>
                 </select>
+                <p v-if="jenisChanged" class="field-warning" role="status">
+                  Isian survei sebelumnya tetap tercatat sebagai jenis pegawai yang lama; hanya isian
+                  baru yang memakai jenis ini.
+                </p>
               </div>
 
               <div class="form-footer">
@@ -277,6 +291,20 @@ const editingId = ref(null);
 const saving = ref(false);
 const form = reactive({ nip: "", nama: "", unitKerja: "", jenisPegawai: "Organik" });
 
+// Values as they were when the edit form was opened, to warn about changes
+// that don't carry over to survey results already submitted: each submission
+// keeps its own copy of unit and jenis, and is matched to the employee by nama.
+const original = reactive({ nama: "", unitKerja: "", jenisPegawai: "" });
+const nameChanged = computed(
+  () => !!editingId.value && form.nama.trim() !== original.nama.trim()
+);
+const unitChanged = computed(
+  () => !!editingId.value && !!form.unitKerja && form.unitKerja !== original.unitKerja
+);
+const jenisChanged = computed(
+  () => !!editingId.value && form.jenisPegawai !== original.jenisPegawai
+);
+
 function resetForm() {
   form.nip = "";
   form.nama = "";
@@ -296,6 +324,9 @@ function openEditForm(employee) {
   form.nama = employee.nama;
   form.unitKerja = employee.unitKerja;
   form.jenisPegawai = employee.jenisPegawai;
+  original.nama = employee.nama;
+  original.unitKerja = employee.unitKerja;
+  original.jenisPegawai = employee.jenisPegawai;
   formOpen.value = true;
 }
 
@@ -726,6 +757,17 @@ async function reactivate(employee) {
 
 .required {
   color: var(--color-danger);
+}
+
+.field-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-warning-bg);
+  color: #92400e;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .input {
