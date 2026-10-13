@@ -183,7 +183,9 @@ export const useSurveyStore = defineStore("survey", {
     // the seconds between the period lapsing and the next sync_survey_statuses
     // tick.
     activeAvailableSurveys() {
-      const today = new Date().toISOString().slice(0, 10);
+      // WIB date, matching the DB check; the UTC date lags by a day from
+      // 00:00 to 07:00 WIB.
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
       return this.surveys.filter((s) => {
         if (s.status !== "Aktif") return false;
         if (s.tanggalMulai && s.tanggalMulai > today) return false;

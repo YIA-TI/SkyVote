@@ -276,7 +276,9 @@ const uploadSlots = [
 const fileInputs = {};
 const dragging = reactive({ file: false, file2: false });
 
-const today = new Date().toISOString().slice(0, 10);
+// Today's date in WIB (the server's timezone). toISOString() would give the UTC
+// date, which is still "yesterday" between 00:00 and 07:00 WIB.
+const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
 
 const form = reactive({
   tanggal: today,
@@ -377,11 +379,10 @@ watch(selectedSurveyId, async (id) => {
   }
 }, { immediate: true });
 
-// Date picker is clamped to the selected survey's own open period — any date
-// from tanggalMulai to tanggalSelesai is fillable, including future dates
-// within that window.
-const minDate = computed(() => selectedSurvey.value?.tanggalMulai || undefined);
-const maxDate = computed(() => selectedSurvey.value?.tanggalSelesai || undefined);
+// Employees can only fill the survey for today. (The survey list already hides
+// surveys whose period doesn't include today, so today is always in range.)
+const minDate = computed(() => today);
+const maxDate = computed(() => today);
 
 // Anonymous visitors can't read the submissions table, so the real count for
 // (survey, employee, date) comes from an RPC. Re-fetched whenever any of the
