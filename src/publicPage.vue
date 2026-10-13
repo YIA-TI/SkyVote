@@ -80,23 +80,23 @@
           </div>
 
           <div class="field">
-            <label class="field-label" for="tanggal">Pilih tanggal</label>
-            <div class="input-wrap" @click="openDatePicker">
+            <label class="field-label" for="tanggal">Tanggal pengisian</label>
+            <div class="input-wrap">
               <svg class="input-icon" width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
                 <path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
               <input
                 id="tanggal"
-                ref="tanggalInput"
                 v-model="form.tanggal"
                 type="date"
                 class="input"
-                :min="minDate"
-                :max="maxDate"
+                readonly
+                tabindex="-1"
                 required
               />
             </div>
+            <p class="field-hint">Tanggal pengisian otomatis mengikuti hari ini dan tidak dapat diubah.</p>
           </div>
 
           <div class="field" :class="{ 'field-elevated': showSuggestions }">
@@ -213,7 +213,6 @@ const surveys = computed(() => store.activeAvailableSurveys);
 
 const selectedSurveyId = ref(null);
 const fileInput = ref(null);
-const tanggalInput = ref(null);
 const isDragging = ref(false);
 const submitting = ref(false);
 
@@ -286,12 +285,6 @@ onBeforeUnmount(() => {
 
 const selectedSurvey = computed(() => store.findSurvey(selectedSurveyId.value));
 
-// Date picker is clamped to the selected survey's own open period — any date
-// from tanggalMulai to tanggalSelesai is fillable, including future dates
-// within that window.
-const minDate = computed(() => selectedSurvey.value?.tanggalMulai || undefined);
-const maxDate = computed(() => selectedSurvey.value?.tanggalSelesai || undefined);
-
 const employeeSubmissionCount = computed(() =>
   selectedSurveyId.value && selectedEmployee.value
     ? store.submissionCountForEmployeeSurvey(selectedSurveyId.value, selectedEmployee.value.nama)
@@ -319,17 +312,7 @@ const canSubmit = computed(
 watch(selectedSurveyId, () => {
   form.file = null;
   if (fileInput.value) fileInput.value.value = "";
-  if (minDate.value && form.tanggal < minDate.value) form.tanggal = minDate.value;
-  if (maxDate.value && form.tanggal > maxDate.value) form.tanggal = maxDate.value;
 });
-
-function openDatePicker() {
-  try {
-    tanggalInput.value?.showPicker();
-  } catch {
-    tanggalInput.value?.focus();
-  }
-}
 
 function triggerFilePicker() {
   fileInput.value?.click();
@@ -604,6 +587,13 @@ async function handleSubmit() {
   letter-spacing: 0.01em;
 }
 
+.field-hint {
+  margin: 2px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
 .input-wrap {
   position: relative;
   display: flex;
@@ -635,6 +625,12 @@ async function handleSubmit() {
   color: var(--color-text);
   background-color: var(--color-bg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.input:read-only {
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface);
+  cursor: not-allowed;
 }
 
 .select {
