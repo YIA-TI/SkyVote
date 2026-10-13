@@ -10,6 +10,24 @@ export function jenisPegawaiLabel(jenisPegawai) {
   return jenisPegawai === "Non-Organik" ? "TAD" : jenisPegawai;
 }
 
+// The Supabase API returns at most 1000 rows per request (a project setting),
+// silently truncating anything beyond it. For tables that can outgrow that
+// (submissions, employees, survey answers), page through with .range() until
+// an empty page comes back. `buildQuery(from, to)` returns the ranged query.
+// Advancing by the rows actually received keeps this correct even if the
+// project's cap is lower than the page size asked for.
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; ) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) throw error;
+    if (data.length === 0) break;
+    rows.push(...data);
+    from += data.length;
+  }
+  return rows;
+}
+
 // ── Row <-> app-shape mappers (DB columns are snake_case, the app/components
 // use the camelCase field names that were already in place before this
 // Supabase migration, so component templates don't need to change) ────────
@@ -275,8 +293,9 @@ export const useSurveyStore = defineStore("survey", {
     },
 
     async fetchSubmissions() {
-      const { data, error } = await supabase.from("submissions").select("*").order("id");
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase.from("submissions").select("*").order("id").range(from, to)
+      );
       this.submissions = data.map(mapSubmission);
     },
 
@@ -336,8 +355,9 @@ export const useSurveyStore = defineStore("survey", {
     },
 
     async fetchEmployees() {
-      const { data, error } = await supabase.from("employees").select("*").order("nama");
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase.from("employees").select("*").order("nama").order("id").range(from, to)
+      );
       this.employees = data.map(mapEmployee);
     },
 
@@ -526,16 +546,18 @@ export const useSurveyStore = defineStore("survey", {
     // question_id no longer points at a live row (after saveSurveyQuestions
     // has delete-then-reinserted the question list — see 014's migration note).
     async fetchSurveyResults(surveyId) {
-      const [{ data: questions, error: qError }, { data: answers, error: aError }] = await Promise.all([
+      const [{ data: questions, error: qError }, answers] = await Promise.all([
         supabase
           .from("survey_questions")
           .select("*, survey_question_options(*)")
           .eq("survey_id", surveyId)
           .order("urutan"),
-        supabase.from("survey_answers").select("*").eq("survey_id", surveyId).order("id"),
+        // Paged: a busy survey has well over 1000 answer rows.
+        fetchAllRows((from, to) =>
+          supabase.from("survey_answers").select("*").eq("survey_id", surveyId).order("id").range(from, to)
+        ),
       ]);
       if (qError) throw qError;
-      if (aError) throw aError;
 
       const liveQuestionIds = new Set(questions.map((q) => q.id));
 
