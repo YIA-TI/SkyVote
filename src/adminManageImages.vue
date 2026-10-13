@@ -4,8 +4,9 @@
       <div>
         <h1 class="page-title">Hapus Data</h1>
         <p class="page-subtitle">
-          Kelola dan hapus foto bukti survei yang tersimpan untuk menghemat penyimpanan, atau hapus
-          seluruh data submission (termasuk data pegawai yang sudah mengisi) untuk satu survei.
+          Kelola dan hapus data submission beserta foto buktinya untuk menghemat penyimpanan. Pilih
+          survei, lalu persempit dengan rentang tanggal atau nama pegawai: tombol Hapus Data hanya
+          menghapus data yang sedang tampil di tabel.
         </p>
       </div>
     </div>
@@ -34,14 +35,53 @@
           </select>
         </div>
 
+        <div class="date-range">
+          <div class="survey-filter">
+            <label class="date-label" for="tanggal-dari">Dari</label>
+            <input
+              id="tanggal-dari"
+              v-model="tanggalDari"
+              type="date"
+              class="survey-filter-select date-input"
+              :min="selectedSurvey?.tanggalMulai || undefined"
+              :max="tanggalSampai || selectedSurvey?.tanggalSelesai || undefined"
+            />
+          </div>
+          <div class="survey-filter">
+            <label class="date-label" for="tanggal-sampai">Sampai</label>
+            <input
+              id="tanggal-sampai"
+              v-model="tanggalSampai"
+              type="date"
+              class="survey-filter-select date-input"
+              :min="tanggalDari || selectedSurvey?.tanggalMulai || undefined"
+              :max="selectedSurvey?.tanggalSelesai || undefined"
+            />
+          </div>
+          <button
+            v-if="tanggalDari || tanggalSampai"
+            type="button"
+            class="reset-dates"
+            @click="resetDates"
+          >
+            Reset tanggal
+          </button>
+        </div>
+
         <button
           type="button"
           class="delete-all-button"
-          :disabled="!selectedSurveyId || deletingAll"
+          :disabled="!selectedSurveyId || deletingAll || filteredSubmissions.length === 0"
           :title="!selectedSurveyId ? 'Pilih satu survei terlebih dahulu' : ''"
           @click="openDeleteAllConfirm"
         >
-          {{ deletingAll ? "Menghapus..." : "Hapus Data" }}
+          {{
+            deletingAll
+              ? "Menghapus..."
+              : selectedSurveyId
+              ? `Hapus Data (${filteredSubmissions.length})`
+              : "Hapus Data"
+          }}
         </button>
       </div>
 
@@ -125,14 +165,14 @@
 
     <ConfirmDialog
       :visible="showDeleteAllConfirm"
-      title="Hapus semua data submission?"
+      title="Hapus data submission yang ditampilkan?"
       :message="deleteAllConfirmMessage"
       :note="DELETE_ALL_CONFIRM_NOTE"
       confirm-text="Ya, Hapus"
       cancel-text="Batal"
       danger
       @confirm="performDeleteAll"
-      @cancel="showDeleteAllConfirm = false"
+      @cancel="cancelDeleteAll"
     />
   </div>
 </template>
@@ -157,7 +197,19 @@ function formatTanggal(isoDate) {
 
 const search = ref("");
 const selectedSurveyId = ref(null);
+// Inclusive range on the date picked when filling the survey; both optional.
+const tanggalDari = ref("");
+const tanggalSampai = ref("");
 const page = ref(1);
+
+const selectedSurvey = computed(() =>
+  selectedSurveyId.value ? store.findSurvey(selectedSurveyId.value) : null
+);
+
+function resetDates() {
+  tanggalDari.value = "";
+  tanggalSampai.value = "";
+}
 const pageSize = 10;
 
 function surveyNameFor(sub) {
@@ -177,6 +229,9 @@ const filteredSubmissions = computed(() => {
   if (selectedSurveyId.value) {
     list = list.filter((s) => s.surveyId === selectedSurveyId.value);
   }
+
+  if (tanggalDari.value) list = list.filter((s) => s.tanggal >= tanggalDari.value);
+  if (tanggalSampai.value) list = list.filter((s) => s.tanggal <= tanggalSampai.value);
 
   const term = search.value.trim().toLowerCase();
   if (term) {
@@ -240,28 +295,52 @@ async function toggleImage(submission) {
 const deletingAll = ref(false);
 const showDeleteAllConfirm = ref(false);
 
+// What the confirm dialog will delete is captured when it opens, so a
+// realtime update or a filter change while it is open can't alter the set.
+const pendingDelete = ref([]);
+const pendingScope = ref("");
+
 const deleteAllConfirmMessage = computed(() => {
-  if (!selectedSurveyId.value) return "";
-  const surveyName = store.findSurvey(selectedSurveyId.value)?.nama ?? "survei ini";
-  const count = store.submissions.filter((s) => s.surveyId === selectedSurveyId.value).length;
+  if (pendingDelete.value.length === 0) return "";
   return [
-    `Anda akan menghapus ${count} data submission untuk survei "${surveyName}".`,
-    "Foto bukti dan baris data pegawai akan terhapus sekaligus, dan kuota pengisian survei ini ikut ter-reset.",
+    `Anda akan menghapus ${pendingDelete.value.length} data submission yang sedang tampil di tabel:`,
+    pendingScope.value,
+    "Foto bukti dan baris data pegawai akan terhapus sekaligus, dan kuota pengisian pegawai pada data tersebut ikut ter-reset. Data lain yang tidak tampil di tabel tidak ikut terhapus.",
   ].join("\n\n");
 });
 
 const DELETE_ALL_CONFIRM_NOTE =
   "Tindakan ini tidak bisa dibatalkan. Pastikan Anda sudah ekspor ke PDF atau Excel sebelum melanjutkan.";
 
+function describeScope() {
+  const lines = [`Survei: ${selectedSurvey.value?.nama ?? "-"}`];
+  if (tanggalDari.value || tanggalSampai.value) {
+    const from = tanggalDari.value ? formatTanggal(tanggalDari.value) : "awal";
+    const to = tanggalSampai.value ? formatTanggal(tanggalSampai.value) : "akhir";
+    lines.push(`Tanggal: ${from} s/d ${to}`);
+  } else {
+    lines.push("Tanggal: semua tanggal");
+  }
+  const term = search.value.trim();
+  if (term) lines.push(`Nama pegawai mengandung: "${term}"`);
+  return lines.join("\n");
+}
+
+function cancelDeleteAll() {
+  showDeleteAllConfirm.value = false;
+  pendingDelete.value = [];
+}
+
 function openDeleteAllConfirm() {
   if (!selectedSurveyId.value) return;
 
-  const count = store.submissions.filter((s) => s.surveyId === selectedSurveyId.value).length;
-  if (count === 0) {
-    toast.show("Tidak ada data untuk dihapus pada survei ini.", "info");
+  if (filteredSubmissions.value.length === 0) {
+    toast.show("Tidak ada data yang tampil untuk dihapus.", "info");
     return;
   }
 
+  pendingDelete.value = [...filteredSubmissions.value];
+  pendingScope.value = describeScope();
   showDeleteAllConfirm.value = true;
 }
 
@@ -269,7 +348,8 @@ async function performDeleteAll() {
   showDeleteAllConfirm.value = false;
   deletingAll.value = true;
   try {
-    const deletedCount = await store.deleteAllSubmissionsForSurvey(selectedSurveyId.value);
+    const deletedCount = await store.deleteSubmissions(pendingDelete.value);
+    pendingDelete.value = [];
     expandedId.value = null;
     imageUrls.value = {};
     imageSizes.value = {};
@@ -397,6 +477,41 @@ async function performDeleteAll() {
   color: var(--color-text-secondary);
   background: transparent;
   cursor: pointer;
+}
+
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.date-input {
+  min-width: 130px;
+}
+
+.reset-dates {
+  height: 40px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.delete-all-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .delete-all-button {

@@ -684,32 +684,40 @@ export const useSurveyStore = defineStore("survey", {
       this.submissions = this.submissions.filter((s) => s.id !== submissionId);
     },
 
-    // Deletes the submission rows themselves (not just the photos) for one
-    // survey — used by the "Hapus Data" button when the admin wants to wipe
-    // out every employee's entry for that survey, not merely free up
-    // storage. Also drops quota/participation history, so employees could
-    // submit again from scratch.
-    async deleteAllSubmissionsForSurvey(surveyId) {
-      const targets = this.submissions.filter((s) => s.surveyId === surveyId);
-      if (targets.length === 0) return 0;
+    // Deletes exactly the given submissions (the rows themselves, not just
+    // the photos) — used by the "Hapus Data" button, which passes the rows
+    // currently shown in the table (survey + date range + name filter). Also
+    // drops their quota/participation history. Rows go first and the photos
+    // after, so a failure never leaves a row pointing at a missing file.
+    async deleteSubmissions(targets) {
+      const list = targets.filter((s) => typeof s.id === "number");
+      if (list.length === 0) return 0;
 
-      const paths = targets.flatMap((s) => [s.fileBukti, s.fileBukti2]).filter(Boolean);
-      if (paths.length > 0) {
-        const { error: removeError } = await supabase.storage.from(BUKTI_BUCKET).remove(paths);
-        if (removeError) {
-          throw new Error(`Gagal menghapus file: ${removeError.message}`);
+      // Chunked: a long id list would overflow the request URL.
+      const chunk = (items, size) =>
+        Array.from({ length: Math.ceil(items.length / size) }, (_, i) =>
+          items.slice(i * size, i * size + size)
+        );
+
+      for (const ids of chunk(list.map((s) => s.id), 200)) {
+        const { error } = await supabase.from("submissions").delete().in("id", ids);
+        if (error) throw new Error(error.message);
+      }
+
+      const deleted = new Set(list.map((s) => s.id));
+      this.submissions = this.submissions.filter((s) => !deleted.has(s.id));
+
+      const paths = list.flatMap((s) => [s.fileBukti, s.fileBukti2]).filter(Boolean);
+      for (const batch of chunk(paths, 100)) {
+        const { error } = await supabase.storage.from(BUKTI_BUCKET).remove(batch);
+        if (error) {
+          throw new Error(
+            `Data terhapus, tetapi sebagian file bukti gagal dihapus dari penyimpanan: ${error.message}`
+          );
         }
       }
 
-      const { error: deleteError } = await supabase
-        .from("submissions")
-        .delete()
-        .eq("survey_id", surveyId);
-      if (deleteError) throw new Error(deleteError.message);
-
-      this.submissions = this.submissions.filter((s) => s.surveyId !== surveyId);
-
-      return targets.length;
+      return list.length;
     },
 
     async markNotificationRead(notificationId) {
