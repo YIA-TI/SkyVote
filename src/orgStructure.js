@@ -1,17 +1,22 @@
 // Struktur organisasi InJourney Airports (sisi Airport Operations) yang
 // dipakai sebagai pengelompokan baris di "Rekapitulasi Partisipasi per
-// Departemen" — General Manager + 4 Divisi di level atas, masing-masing
+// Departemen" — General Manager + 5 Divisi di level atas, masing-masing
 // punya beberapa Department Head sebagai anak (leaf) yang benar-benar
 // dipakai sebagai employees.unit_kerja / submissions.departemen di database.
+// Hanya nama leaf yang disimpan di database; nama grup (key) di bawah ini
+// cuma pengelompokan tampilan, jadi memindahkan leaf antar grup tidak perlu
+// mengubah data.
 export const ORG_STRUCTURE = [
   {
     key: "General Manager",
-    // Everything that doesn't cleanly belong to one of the 4 divisions below
-    // is bucketed here as its own Department-Head-equivalent leaf: the GM
-    // office itself, and units not yet broken out into a proper Department
-    // Head (Finance Section, Support Services/PJP2U/HC Solution).
+    // The GM office itself.
+    children: ["General Manager"],
+  },
+  {
+    key: "Airport Operation Center Head",
+    // The division head itself (same name as the division, like "General
+    // Manager" above) listed first, then the units that report to it.
     children: [
-      "General Manager",
       "Airport Operation Center Head",
       "Branch Communication & CSR Department Head",
       "Legal & Compliance Department Head",

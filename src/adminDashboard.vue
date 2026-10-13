@@ -206,6 +206,7 @@ const filteredSubmissions = computed(() => {
 
 const shortLabels = {
   "General Manager": "GM",
+  "Airport Operation Center Head": "AOCH",
   "Airport Quality & Safety Management System": "Quality & Safety",
   "Airport Operation, Services & Security": "Ops & Security",
   "Airport Technical": "Technical",
