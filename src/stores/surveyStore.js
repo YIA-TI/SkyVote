@@ -491,8 +491,9 @@ export const useSurveyStore = defineStore("survey", {
     // full question+options fetch is only worth doing per-survey in the
     // builder/results pages, not for every row of a list).
     async fetchQuestionCounts() {
-      const { data, error } = await supabase.from("survey_questions").select("survey_id");
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase.from("survey_questions").select("survey_id").order("id").range(from, to)
+      );
       const counts = {};
       for (const row of data) counts[row.survey_id] = (counts[row.survey_id] ?? 0) + 1;
       this.questionCounts = counts;
