@@ -336,10 +336,11 @@ export const useSurveyStore = defineStore("survey", {
     // submission-shaped rows (one per submission, without any personal data)
     // so the report can use the same grouping code as the admin report.
     async fetchPublicReportSubmissions(surveyId) {
-      const { data, error } = await supabase.rpc("public_report_counts", {
-        p_survey_id: surveyId,
-      });
-      if (error) throw new Error(error.message);
+      // One row per tanggal/departemen/jenis (up to ~50 a day), so a long
+      // survey exceeds the 1000-rows-per-request cap: fetch it in pages.
+      const data = await fetchAllRows((from, to) =>
+        supabase.rpc("public_report_counts", { p_survey_id: surveyId }).range(from, to)
+      );
       const rows = [];
       for (const row of data) {
         for (let i = 0; i < row.jumlah; i++) {
