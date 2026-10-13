@@ -179,7 +179,7 @@
           <div v-for="slot in uploadSlots" :key="slot.key" class="field">
             <label class="field-label">
               {{ slot.label }}
-              <span class="slot-badge" :class="`slot-badge-${slot.tone}`">({{ slot.badge }})</span>
+              <span class="slot-badge">({{ slot.badge }})</span>
             </label>
             <div
               class="dropzone"
@@ -270,8 +270,8 @@ const submitting = ref(false);
 
 // External surveys take a required proof photo plus one optional extra photo.
 const uploadSlots = [
-  { key: "file", label: "Upload Bukti", badge: "Best airport", tone: "airport", required: true },
-  { key: "file2", label: "Upload Bukti Tambahan", badge: "Best staff", tone: "staff", required: false },
+  { key: "file", label: "Upload Bukti", badge: "Best airport", required: true },
+  { key: "file2", label: "Upload Bukti Tambahan", badge: "Best staff", required: false },
 ];
 const fileInputs = {};
 const dragging = reactive({ file: false, file2: false });
@@ -1042,26 +1042,18 @@ async function handleSubmit() {
   background-color: rgba(0, 93, 172, 0.04);
 }
 
-/* Category tag next to each upload label; one colour per category. */
+/* Category tag next to each upload label. */
 .slot-badge {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 10px;
   border-radius: 8px;
+  background-color: #14532d;
+  color: #86efac;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.5;
   vertical-align: middle;
-}
-
-.slot-badge-airport {
-  background-color: #14532d;
-  color: #86efac;
-}
-
-.slot-badge-staff {
-  background-color: #facc15;
-  color: #422006;
 }
 
 .remove-optional-file {
