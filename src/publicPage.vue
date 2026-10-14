@@ -284,25 +284,35 @@ const form = reactive({
 
 let pollInterval = null;
 
+// Every open tab of this page polls the survey list, and each request is one
+// line in Supabase's API logs. 3 seconds (plus a status-sync RPC each time)
+// meant ~40 requests a minute per visitor and burned through the free log
+// quota; once a minute — and only while the tab is visible — is plenty for
+// "admin just activated a survey". Focus / returning to the tab refreshes
+// immediately anyway.
+const POLL_INTERVAL_MS = 60_000;
+
+async function refreshSurveys() {
+  // Keeps the shown date (and the per-day quota) right after midnight.
+  form.tanggal = wibToday();
+  try {
+    await store.fetchSurveys({ sync: false });
+  } catch (err) {
+    console.error("Poll error:", err);
+  }
+}
+
+function refreshWhenVisible() {
+  if (document.visibilityState === "visible") refreshSurveys();
+}
+
 onMounted(async () => {
   await store.ensureBaseData();
   selectedSurveyId.value = surveys.value[0]?.id ?? null;
 
-  // Poll surveys every 3 seconds for real-time updates
-  pollInterval = setInterval(async () => {
-    // Keeps the shown date (and the per-day quota) right after midnight.
-    form.tanggal = wibToday();
-    try {
-      await store.fetchSurveys();
-    } catch (err) {
-      console.error("Poll error:", err);
-    }
-  }, 3000);
-
-  // Also refetch when user refocuses tab
-  window.addEventListener("focus", () => {
-    store.fetchSurveys().catch(console.error);
-  });
+  pollInterval = setInterval(refreshWhenVisible, POLL_INTERVAL_MS);
+  window.addEventListener("focus", refreshWhenVisible);
+  document.addEventListener("visibilitychange", refreshWhenVisible);
 });
 
 const nameQuery = ref("");
@@ -341,7 +351,8 @@ onMounted(() => document.addEventListener("click", closeSuggestionsOnOutsideClic
 onBeforeUnmount(() => {
   document.removeEventListener("click", closeSuggestionsOnOutsideClick);
   if (pollInterval) clearInterval(pollInterval);
-  window.removeEventListener("focus", () => store.fetchSurveys());
+  window.removeEventListener("focus", refreshWhenVisible);
+  document.removeEventListener("visibilitychange", refreshWhenVisible);
 });
 
 const selectedSurvey = computed(() => store.findSurvey(selectedSurveyId.value));
@@ -352,10 +363,10 @@ const answers = reactive({});
 
 // Watches selectedSurveyId (a primitive) rather than selectedSurvey (an
 // object computed from store.surveys) on purpose: the public page polls
-// fetchSurveys() every 3s, which replaces store.surveys wholesale, so
+// fetchSurveys(), which replaces store.surveys wholesale, so
 // selectedSurvey would get a brand-new object reference every poll even
 // when the selected survey hasn't changed. Watching the object directly
-// fired this handler every 3s and wiped out whatever the employee had just
+// fired this handler on every poll and wiped out whatever the employee had just
 // answered — watching the id avoids that while still re-fetching questions
 // when the employee actually switches surveys.
 watch(selectedSurveyId, async (id) => {

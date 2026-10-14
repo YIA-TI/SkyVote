@@ -276,15 +276,20 @@ export const useSurveyStore = defineStore("survey", {
 
   actions: {
     // ── Fetches (populate the reactive cache from Supabase) ──────────────
-    async fetchSurveys() {
+    // `sync: false` skips the status-sync RPC. Background polling uses it:
+    // pg_cron already runs the sync every 15 minutes, and an RPC on every poll
+    // doubled the number of API requests (and Supabase log volume) for no gain.
+    async fetchSurveys({ sync = true } = {}) {
       // Opportunistic sync so status reflects the date period immediately
       // on page load, without waiting for the next pg_cron tick. Swallow
       // errors — this is a freshness nicety, not something that should
       // block the survey list from loading.
-      try {
-        await supabase.rpc("sync_survey_statuses");
-      } catch (err) {
-        console.warn("sync_survey_statuses failed:", err);
+      if (sync) {
+        try {
+          await supabase.rpc("sync_survey_statuses");
+        } catch (err) {
+          console.warn("sync_survey_statuses failed:", err);
+        }
       }
 
       const { data, error } = await supabase.from("surveys").select("*").order("id");
