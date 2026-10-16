@@ -287,10 +287,10 @@ let pollInterval = null;
 // Every open tab of this page polls the survey list, and each request is one
 // line in Supabase's API logs. 3 seconds (plus a status-sync RPC each time)
 // meant ~40 requests a minute per visitor and burned through the free log
-// quota; once a minute — and only while the tab is visible — is plenty for
-// "admin just activated a survey". Focus / returning to the tab refreshes
+// quota; every two minutes — and only while the tab is visible — is plenty
+// for "admin just activated a survey". Focus / returning to the tab refreshes
 // immediately anyway.
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 120_000;
 
 async function refreshSurveys() {
   // Keeps the shown date (and the per-day quota) right after midnight.
@@ -307,7 +307,7 @@ function refreshWhenVisible() {
 }
 
 onMounted(async () => {
-  await store.ensureBaseData();
+  await store.ensurePublicData();
   selectedSurveyId.value = surveys.value[0]?.id ?? null;
 
   pollInterval = setInterval(refreshWhenVisible, POLL_INTERVAL_MS);

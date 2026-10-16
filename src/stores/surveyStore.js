@@ -13,17 +13,24 @@ export function jenisPegawaiLabel(jenisPegawai) {
 // The Supabase API returns at most 1000 rows per request (a project setting),
 // silently truncating anything beyond it. For tables that can outgrow that
 // (submissions, employees, survey answers), page through with .range() until
-// an empty page comes back. `buildQuery(from, to)` returns the ranged query.
-// Advancing by the rows actually received keeps this correct even if the
-// project's cap is lower than the page size asked for.
+// the end. `buildQuery(from, to)` returns the ranged query and must ask for
+// `{ count: "exact" }`: the first response then says how many rows exist, so a
+// table under the cap needs ONE request instead of one plus an empty page
+// (every request is a line in Supabase's log quota). Without a count it falls
+// back to stopping at the first empty page. Advancing by the rows actually
+// received keeps this correct even if the project's cap is lower than the page
+// size asked for.
 async function fetchAllRows(buildQuery, pageSize = 1000) {
   const rows = [];
+  let total = null;
   for (let from = 0; ; ) {
-    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    const { data, error, count } = await buildQuery(from, from + pageSize - 1);
     if (error) throw error;
+    if (typeof count === "number") total = count;
     if (data.length === 0) break;
     rows.push(...data);
     from += data.length;
+    if (total !== null && rows.length >= total) break;
   }
   return rows;
 }
@@ -168,6 +175,7 @@ export const useSurveyStore = defineStore("survey", {
     workforceTotals: { Organik: 0, "Non-Organik": 0 },
     lastSubmission: loadLastSubmission(),
     baseDataLoaded: false,
+    publicDataLoaded: false,
     realtimeChannels: [],
     questionCounts: {},
   }),
@@ -299,7 +307,7 @@ export const useSurveyStore = defineStore("survey", {
 
     async fetchSubmissions() {
       const data = await fetchAllRows((from, to) =>
-        supabase.from("submissions").select("*").order("id").range(from, to)
+        supabase.from("submissions").select("*", { count: "exact" }).order("id").range(from, to)
       );
       this.submissions = data.map(mapSubmission);
     },
@@ -344,7 +352,9 @@ export const useSurveyStore = defineStore("survey", {
       // One row per tanggal/departemen/jenis (up to ~50 a day), so a long
       // survey exceeds the 1000-rows-per-request cap: fetch it in pages.
       const data = await fetchAllRows((from, to) =>
-        supabase.rpc("public_report_counts", { p_survey_id: surveyId }).range(from, to)
+        supabase
+          .rpc("public_report_counts", { p_survey_id: surveyId }, { count: "exact" })
+          .range(from, to)
       );
       const rows = [];
       for (const row of data) {
@@ -362,7 +372,12 @@ export const useSurveyStore = defineStore("survey", {
 
     async fetchEmployees() {
       const data = await fetchAllRows((from, to) =>
-        supabase.from("employees").select("*").order("nama").order("id").range(from, to)
+        supabase
+          .from("employees")
+          .select("*", { count: "exact" })
+          .order("nama")
+          .order("id")
+          .range(from, to)
       );
       this.employees = data.map(mapEmployee);
     },
@@ -394,6 +409,17 @@ export const useSurveyStore = defineStore("survey", {
     // Fetches the shared data every page needs (surveys, employees,
     // submissions, workforce totals). Safe to call from every page's
     // onMounted — only hits the network once thanks to baseDataLoaded.
+    // The public pages (form + /report) only need the survey list and the
+    // employee list. Skipping submissions (always empty for anonymous
+    // visitors), departments and workforce totals cuts each visit from ~7 API
+    // requests to ~3. Kept separate from baseDataLoaded so an admin who lands
+    // here first still gets the full set later.
+    async ensurePublicData() {
+      if (this.publicDataLoaded || this.baseDataLoaded) return;
+      await Promise.all([this.fetchSurveys(), this.fetchEmployees()]);
+      this.publicDataLoaded = true;
+    },
+
     async ensureBaseData() {
       if (this.baseDataLoaded) return;
       await Promise.all([
@@ -497,7 +523,7 @@ export const useSurveyStore = defineStore("survey", {
     // builder/results pages, not for every row of a list).
     async fetchQuestionCounts() {
       const data = await fetchAllRows((from, to) =>
-        supabase.from("survey_questions").select("survey_id").order("id").range(from, to)
+        supabase.from("survey_questions").select("survey_id", { count: "exact" }).order("id").range(from, to)
       );
       const counts = {};
       for (const row of data) counts[row.survey_id] = (counts[row.survey_id] ?? 0) + 1;
@@ -561,7 +587,12 @@ export const useSurveyStore = defineStore("survey", {
           .order("urutan"),
         // Paged: a busy survey has well over 1000 answer rows.
         fetchAllRows((from, to) =>
-          supabase.from("survey_answers").select("*").eq("survey_id", surveyId).order("id").range(from, to)
+          supabase
+            .from("survey_answers")
+            .select("*", { count: "exact" })
+            .eq("survey_id", surveyId)
+            .order("id")
+            .range(from, to)
         ),
       ]);
       if (qError) throw qError;

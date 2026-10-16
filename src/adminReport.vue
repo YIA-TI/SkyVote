@@ -464,8 +464,9 @@ function markUpdated() {
 }
 
 onMounted(async () => {
-  // Employees (public read) are needed for the Jumlah / Target columns.
-  await store.ensureBaseData();
+  // Employees (public read) are needed for the Jumlah / Target columns. The
+  // public view skips the admin-only tables (submissions etc.) entirely.
+  await (props.publicMode ? store.ensurePublicData() : store.ensureBaseData());
   if (props.publicMode) {
     try {
       publicSurveys.value = await store.fetchPublicReportSurveys();
