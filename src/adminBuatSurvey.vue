@@ -147,6 +147,7 @@
               <template v-if="q.tipe !== 'Lisan'">
                 <div class="qb-options">
                   <div v-for="(opt, oi) in q.options" :key="oi" class="qb-option-row">
+                    <span class="qb-option-letter">{{ optionLabel(oi) }}.</span>
                     <input v-model.trim="opt.opsi" class="input qb-option-input" placeholder="Opsi jawaban" />
                     <button
                       type="button"
@@ -162,9 +163,23 @@
               </template>
               <p v-else class="qb-lisan-hint">Pegawai akan mengisi jawaban bebas (teks), tanpa opsi.</p>
             </div>
-            <button type="button" class="btn-outline qb-add-question" @click="addQuestion">
-              + Tambah Pertanyaan
-            </button>
+            <div class="qb-actions">
+              <button type="button" class="btn-outline qb-add-question" @click="addQuestion">
+                + Tambah Pertanyaan
+              </button>
+              <button type="button" class="btn-outline qb-preview" @click="previewOpen = true">
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M1.5 10S4.5 4.5 10 4.5 18.5 10 18.5 10 15.5 15.5 10 15.5 1.5 10 1.5 10Z"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linejoin="round"
+                  />
+                  <circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+                Pratinjau
+              </button>
+            </div>
             <p class="field-helper">
               Pegawai akan menjawab pertanyaan ini langsung di halaman input, tanpa perlu upload bukti foto.
             </p>
@@ -283,14 +298,28 @@
         </button>
       </div>
     </form>
+
+    <!-- Shows the internal survey as employees will see it, from what is
+         currently typed in the form (nothing is saved). -->
+    <SurveyPreview
+      v-if="previewOpen && form.tipe === 'Internal'"
+      :nama="form.nama"
+      :deskripsi="form.deskripsi"
+      :questions="form.questions"
+      @close="previewOpen = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import SurveyPreview from "./components/SurveyPreview.vue";
+import { optionLabel } from "./lib/optionLabel";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
+
+const previewOpen = ref(false);
 
 const store = useSurveyStore();
 const toast = useToastStore();
@@ -821,6 +850,14 @@ async function handleSaveDraft() {
   gap: 6px;
 }
 
+.qb-option-letter {
+  flex-shrink: 0;
+  min-width: 1.6em;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
 .qb-option-input {
   height: 34px;
   padding-left: 12px;
@@ -856,8 +893,21 @@ async function handleSaveDraft() {
   padding: 0;
 }
 
+.qb-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .qb-add-question {
   align-self: flex-start;
+}
+
+.qb-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .form-footer {

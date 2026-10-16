@@ -154,15 +154,21 @@
             <div v-else v-for="(q, qi) in questions" :key="q.id" class="question-block">
               <p class="question-text">{{ qi + 1 }}. {{ q.pertanyaan }}</p>
               <template v-if="q.tipe === 'Pilihan'">
-                <label v-for="opt in q.options" :key="opt.id" class="option-choice">
+                <label v-for="(opt, oi) in q.options" :key="opt.id" class="option-choice">
                   <input type="radio" :name="`question-${q.id}`" :value="opt.id" v-model="answers[q.id]" />
-                  {{ opt.opsi }}
+                  <span class="option-body">
+                    <span class="option-letter">{{ optionLabel(oi) }}.</span>
+                    <span>{{ opt.opsi }}</span>
+                  </span>
                 </label>
               </template>
               <template v-else-if="q.tipe === 'PilihanMulti'">
-                <label v-for="opt in q.options" :key="opt.id" class="option-choice">
+                <label v-for="(opt, oi) in q.options" :key="opt.id" class="option-choice">
                   <input type="checkbox" :value="opt.id" v-model="answers[q.id]" />
-                  {{ opt.opsi }}
+                  <span class="option-body">
+                    <span class="option-letter">{{ optionLabel(oi) }}.</span>
+                    <span>{{ opt.opsi }}</span>
+                  </span>
                 </label>
               </template>
               <textarea
@@ -254,6 +260,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
+import { optionLabel } from "./lib/optionLabel";
 import { wibToday } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
@@ -1022,6 +1029,20 @@ async function handleSubmit() {
   font-size: 13px;
   color: var(--color-text-secondary);
   cursor: pointer;
+}
+
+/* Letter and answer sit close together; the small min-width only keeps the
+   answers lined up when the letters differ in width (I. vs M.). */
+.option-body {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.option-letter {
+  min-width: 1.05em;
+  font-weight: 700;
+  color: var(--color-primary);
 }
 
 .lisan-input {
