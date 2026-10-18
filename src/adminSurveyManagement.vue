@@ -68,6 +68,9 @@
             <tr v-for="survey in pagedSurveys" :key="survey.id">
               <td>
                 <div class="cell-title">{{ survey.nama }}</div>
+                <span v-if="survey.isDefault" class="default-badge" title="Dipilih otomatis di halaman publik">
+                  Default halaman publik
+                </span>
               </td>
               <td>
                 <span class="status-flag">
@@ -139,6 +142,28 @@
               </td>
               <td class="col-action">
                 <div class="row-actions">
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    :class="{ 'icon-btn-active': survey.isDefault }"
+                    :disabled="settingDefaultId === survey.id"
+                    :title="
+                      survey.isDefault
+                        ? 'Hapus sebagai survei default'
+                        : 'Jadikan survei default di halaman publik'
+                    "
+                    :aria-pressed="survey.isDefault"
+                    @click="toggleDefault(survey)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 20 20" :fill="survey.isDefault ? 'currentColor' : 'none'">
+                      <path
+                        d="M10 2.8l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8.1l5-.7L10 2.8Z"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </button>
                   <RouterLink
                     v-if="survey.tipe === 'Internal'"
                     :to="`/admin/survey-hasil/${survey.id}`"
@@ -329,6 +354,27 @@ function statusClass(status) {
   if (status === "Selesai") return "status-selesai";
   if (status === "Draft") return "status-draft";
   return "status-terjadwal";
+}
+
+// Only one survey can be the public form's default: choosing another replaces
+// it, clicking the current default clears it.
+const settingDefaultId = ref(null);
+
+async function toggleDefault(survey) {
+  settingDefaultId.value = survey.id;
+  try {
+    await store.setDefaultSurvey(survey.isDefault ? null : survey.id);
+    toast.show(
+      survey.isDefault
+        ? `"${survey.nama}" sekarang menjadi survei default di halaman publik`
+        : "Survei default dihapus. Halaman publik memilih survei aktif pertama.",
+      "success"
+    );
+  } catch (err) {
+    toast.show(err.message, "error");
+  } finally {
+    settingDefaultId.value = null;
+  }
 }
 
 async function confirmDelete(survey) {
@@ -710,6 +756,26 @@ async function confirmDelete(survey) {
 .icon-btn:hover {
   background-color: var(--color-bg);
   color: var(--color-primary);
+}
+
+.icon-btn-active {
+  color: var(--color-warning);
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.default-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-warning-bg);
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .icon-btn-danger:hover {

@@ -47,6 +47,7 @@ function mapSurvey(row) {
     link: row.link ?? "",
     deskripsi: row.deskripsi ?? "",
     tampilPublik: row.tampil_publik ?? false,
+    isDefault: row.is_default ?? false,
     tanggalMulai: row.tanggal_mulai ?? "",
     tanggalSelesai: row.tanggal_selesai ?? "",
     status: row.status,
@@ -238,6 +239,13 @@ export const useSurveyStore = defineStore("survey", {
         if (s.tanggalSelesai && s.tanggalSelesai < today) return false;
         return true;
       });
+    },
+
+    // The survey the public form starts on: the admin's default if it is
+    // available right now, otherwise simply the first available survey.
+    defaultAvailableSurveyId() {
+      const available = this.activeAvailableSurveys;
+      return (available.find((s) => s.isDefault) ?? available[0])?.id ?? null;
     },
 
     submissionsBySurvey: (state) => (surveyId) =>
@@ -483,6 +491,15 @@ export const useSurveyStore = defineStore("survey", {
       if (error) throw error;
       const survey = this.findSurvey(surveyId);
       if (survey) survey.status = status;
+    },
+
+    // Makes `surveyId` the survey pre-selected on the public form (pass null to
+    // clear the default). Only one survey is the default; the database swaps it
+    // atomically, and the local flags are updated to match.
+    async setDefaultSurvey(surveyId) {
+      const { error } = await supabase.rpc("set_default_survey", { p_survey_id: surveyId });
+      if (error) throw new Error(error.message);
+      for (const survey of this.surveys) survey.isDefault = survey.id === surveyId;
     },
 
     async removeSurvey(surveyId) {

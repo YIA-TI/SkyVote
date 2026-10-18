@@ -294,6 +294,15 @@ const surveys = computed(() => store.activeAvailableSurveys);
 const currentYear = new Date().getFullYear();
 
 const selectedSurveyId = ref(null);
+
+// If nothing is selected yet, or the selected survey stops being available
+// (it closed, or its period ended), move to the default one. A survey the
+// employee picked themselves is left alone as long as it stays available.
+watch(surveys, (list) => {
+  if (!selectedSurveyId.value || !list.some((s) => s.id === selectedSurveyId.value)) {
+    selectedSurveyId.value = store.defaultAvailableSurveyId;
+  }
+});
 const submitting = ref(false);
 
 // External surveys take a required proof photo plus one optional extra photo.
@@ -336,7 +345,8 @@ function refreshWhenVisible() {
 
 onMounted(async () => {
   await store.ensurePublicData();
-  selectedSurveyId.value = surveys.value[0]?.id ?? null;
+  // Start on the survey the admin marked as default (if it is available now).
+  selectedSurveyId.value = store.defaultAvailableSurveyId;
 
   pollInterval = setInterval(refreshWhenVisible, POLL_INTERVAL_MS);
   window.addEventListener("focus", refreshWhenVisible);
