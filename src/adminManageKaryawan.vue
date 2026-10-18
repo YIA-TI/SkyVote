@@ -139,16 +139,19 @@
         </span>
         <div class="pager" v-if="totalPages > 1">
           <button class="pager-arrow" type="button" :disabled="page === 1" @click="page--">&lsaquo;</button>
-          <button
-            v-for="p in totalPages"
-            :key="p"
-            type="button"
-            class="pager-page"
-            :class="{ active: p === page }"
-            @click="page = p"
-          >
-            {{ p }}
-          </button>
+          <template v-for="item in pageItems(page, totalPages)" :key="item">
+            <span v-if="typeof item === 'string'" class="pager-gap" aria-hidden="true">&hellip;</span>
+            <button
+              v-else
+              type="button"
+              class="pager-page"
+              :class="{ active: item === page }"
+              :aria-current="item === page ? 'page' : undefined"
+              @click="page = item"
+            >
+              {{ item }}
+            </button>
+          </template>
           <button class="pager-arrow" type="button" :disabled="page === totalPages" @click="page++">&rsaquo;</button>
         </div>
       </div>
@@ -243,6 +246,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { pageItems } from "./lib/pagination";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { ORG_STRUCTURE, shortDeptName } from "./orgStructure.js";
 import { jenisPegawaiLabel, useSurveyStore } from "./stores/surveyStore";

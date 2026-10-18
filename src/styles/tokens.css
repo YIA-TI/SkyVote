@@ -130,6 +130,19 @@ input[type="submit"]:active:not(:disabled),
   }
 }
 
+/* The "…" between page buttons in a pager that skips pages (see lib/pagination.js). */
+.pager-gap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 28px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+}
+
 /* ── Admin page entrance animation ───────────────────────────────────────
    Every admin page (Survey Data, Buat Survey, Report, Detail Survey) shares
    the same .page-heading + main-content-card structure, so this one shared
