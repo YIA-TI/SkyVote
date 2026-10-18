@@ -126,7 +126,13 @@
                   </svg>
                   <span class="pengisian-count">{{ submissionCount(survey) }} pengisian</span>
                 </div>
-                <span class="pengisian-limit">Maks {{ survey.maxPengisian }}x / pegawai / hari</span>
+                <span class="pengisian-limit">
+                  {{
+                    survey.tipe === "Internal"
+                      ? "1x / pegawai selama periode"
+                      : `Maks ${survey.maxPengisian}x / pegawai / hari`
+                  }}
+                </span>
                 <span v-if="survey.tipe !== 'Internal' && survey.tampilPublik" class="pengisian-limit pengisian-publik">
                   Tampil di halaman publik
                 </span>

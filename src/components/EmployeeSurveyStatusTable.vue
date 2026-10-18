@@ -59,7 +59,7 @@
               </td>
               <td>
                 <span class="fill-badge" :class="fillBadgeClass(employee)">
-                  {{ fillCountFor(employee) }}/{{ survey.maxPengisian }}
+                  {{ fillCountFor(employee) }}/{{ quota.limit }}
                 </span>
               </td>
               <td class="col-sisa-kuota">
@@ -201,7 +201,7 @@ import { computed, ref, watch } from "vue";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import { formatWibTime } from "../lib/wib";
 import { shortDeptName } from "../orgStructure";
-import { jenisPegawaiLabel, useSurveyStore } from "../stores/surveyStore";
+import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "../stores/surveyStore";
 
 const props = defineProps({
   employees: {
@@ -227,7 +227,11 @@ const page = ref(1);
 const pageSize = 10;
 
 const survey = computed(() => (props.surveyId ? store.findSurvey(props.surveyId) : null));
-const ready = computed(() => !!survey.value && !!props.tanggal);
+
+// External: maxPengisian per day, so a date is needed. Internal: once per
+// employee for the whole period, so no date is needed and every date counts.
+const quota = computed(() => surveyQuota(survey.value));
+const ready = computed(() => !!survey.value && (!quota.value.perDay || !!props.tanggal));
 
 function fillCountFor(employee) {
   return store.submissionCountForEmployeeSurvey(props.surveyId, employee.nama, props.tanggal);
@@ -236,17 +240,17 @@ function fillCountFor(employee) {
 function fillBadgeClass(employee) {
   const count = fillCountFor(employee);
   if (count === 0) return "fill-empty";
-  if (survey.value && count >= survey.value.maxPengisian) return "fill-full";
+  if (survey.value && count >= quota.value.limit) return "fill-full";
   return "fill-partial";
 }
 
 function remainingQuotaFor(employee) {
   if (!survey.value) return 0;
-  return Math.max(0, survey.value.maxPengisian - fillCountFor(employee));
+  return Math.max(0, quota.value.limit - fillCountFor(employee));
 }
 
 function isCompleted(employee) {
-  return survey.value ? fillCountFor(employee) >= survey.value.maxPengisian : false;
+  return survey.value ? fillCountFor(employee) >= quota.value.limit : false;
 }
 
 function submissionTime(submission) {

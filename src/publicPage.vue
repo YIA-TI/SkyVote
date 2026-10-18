@@ -143,19 +143,39 @@
               </p>
             </div>
             <p v-if="selectedEmployee && selectedSurvey" class="name-quota-info" :class="quotaBadgeClass">
-              Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ selectedSurvey.maxPengisian }}
-              pada tanggal ini
+              <template v-if="quota.perDay">
+                Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ quota.limit }}
+                pada tanggal ini
+              </template>
+              <template v-else>
+                Survei internal hanya bisa diisi {{ quota.limit }} kali selama periode survei. Anda sudah
+                mengisi {{ employeeSubmissionCount }} / {{ quota.limit }}
+              </template>
             </p>
           </div>
 
           <div v-if="selectedSurvey?.tipe === 'Internal'" class="field questions-field">
             <label class="field-label">Pertanyaan</label>
+            <p v-if="quotaFull" class="field-error">
+              <svg class="field-error-icon" width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <path d="M10 2 2 17h16L10 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                <path d="M10 8v4M10 14.5v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+              Anda sudah mengisi survei internal ini. Survei ini hanya bisa diisi
+              {{ quota.limit }} kali selama periode survei.
+            </p>
             <div v-if="questionsLoading" class="questions-loading">Memuat pertanyaan...</div>
             <div v-else v-for="(q, qi) in questions" :key="q.id" class="question-block">
               <p class="question-text">{{ qi + 1 }}. {{ q.pertanyaan }}</p>
               <template v-if="q.tipe === 'Pilihan'">
                 <label v-for="(opt, oi) in q.options" :key="opt.id" class="option-choice">
-                  <input type="radio" :name="`question-${q.id}`" :value="opt.id" v-model="answers[q.id]" />
+                  <input
+                    type="radio"
+                    :name="`question-${q.id}`"
+                    :value="opt.id"
+                    v-model="answers[q.id]"
+                    :disabled="quotaFull"
+                  />
                   <span class="option-body">
                     <span class="option-letter">{{ optionLabel(oi) }}.</span>
                     <span>{{ opt.opsi }}</span>
@@ -164,7 +184,7 @@
               </template>
               <template v-else-if="q.tipe === 'PilihanMulti'">
                 <label v-for="(opt, oi) in q.options" :key="opt.id" class="option-choice">
-                  <input type="checkbox" :value="opt.id" v-model="answers[q.id]" />
+                  <input type="checkbox" :value="opt.id" v-model="answers[q.id]" :disabled="quotaFull" />
                   <span class="option-body">
                     <span class="option-letter">{{ optionLabel(oi) }}.</span>
                     <span>{{ opt.opsi }}</span>
@@ -177,6 +197,7 @@
                 class="input lisan-input"
                 rows="3"
                 placeholder="Tulis jawaban Anda..."
+                :disabled="quotaFull"
               />
             </div>
           </div>
@@ -233,7 +254,7 @@
                 <path d="M10 8v4M10 14.5v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
               </svg>
               Anda sudah mencapai batas maksimal pengisian survei ini pada tanggal tersebut
-              ({{ selectedSurvey?.maxPengisian }} kali per hari).
+              ({{ quota.limit }} kali per hari).
             </p>
           </div>
           </template>
@@ -261,9 +282,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
 import { optionLabel } from "./lib/optionLabel";
+import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { wibToday } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
-import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
 const store = useSurveyStore();
@@ -425,7 +446,10 @@ watch(
   { immediate: true }
 );
 
-// maxPengisian is a per-day limit: quota is counted for the date picked above.
+// External surveys: maxPengisian per day (counted for the date above).
+// Internal surveys: once for the whole period (every date counts).
+const quota = computed(() => surveyQuota(selectedSurvey.value));
+
 // The local cache only has data in an admin session, so take whichever is higher.
 const employeeSubmissionCount = computed(() => {
   if (!selectedSurveyId.value || !selectedEmployee.value) return 0;
@@ -438,14 +462,15 @@ const employeeSubmissionCount = computed(() => {
 });
 
 const quotaFull = computed(() => {
-  const max = selectedSurvey.value?.maxPengisian;
-  if (!max || !selectedEmployee.value || !form.tanggal) return false;
-  return employeeSubmissionCount.value >= max;
+  const { limit, perDay } = quota.value;
+  if (!selectedSurvey.value || !limit || !selectedEmployee.value) return false;
+  if (perDay && !form.tanggal) return false;
+  return employeeSubmissionCount.value >= limit;
 });
 
 const quotaBadgeClass = computed(() => {
   if (!selectedSurvey.value || !selectedEmployee.value) return "";
-  const ratio = employeeSubmissionCount.value / selectedSurvey.value.maxPengisian;
+  const ratio = employeeSubmissionCount.value / quota.value.limit;
   if (ratio >= 1) return "quota-full";
   if (ratio >= 0.8) return "quota-warning";
   return "quota-ok";

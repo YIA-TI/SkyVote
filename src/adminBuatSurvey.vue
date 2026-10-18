@@ -240,7 +240,16 @@
         <span class="section-label">Kuota &amp; Status</span>
 
         <div class="field-row">
-          <div class="field">
+          <!-- Internal surveys have a fixed rule instead of a configurable limit. -->
+          <div v-if="form.tipe === 'Internal'" class="field">
+            <span class="field-label">Batas Pengisian</span>
+            <div class="fixed-quota">1 kali per pegawai selama periode survei</div>
+            <p class="field-helper">
+              Survei internal hanya bisa diisi satu kali oleh setiap pegawai, berapa pun lama
+              periodenya. Aturan ini tetap dan tidak bisa diubah.
+            </p>
+          </div>
+          <div v-else class="field">
             <label class="field-label" for="max-pengisian">Max Pengisian per Hari</label>
             <div class="input-wrap">
               <svg class="input-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
@@ -891,6 +900,19 @@ async function handleSaveDraft() {
   font-weight: 600;
   cursor: pointer;
   padding: 0;
+}
+
+.fixed-quota {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
 }
 
 .qb-actions {

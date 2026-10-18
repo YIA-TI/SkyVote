@@ -48,7 +48,9 @@
     </div>
 
     <div class="report-main">
-        <div class="report-card">
+        <!-- The day-by-day view only makes sense for external surveys (a
+             per-day limit); an internal survey is filled once per period. -->
+        <div v-if="!isInternal" class="report-card">
           <div class="card-header">
             <div>
               <h2 class="card-title">Rekapitulasi Partisipasi per Tanggal</h2>
@@ -185,12 +187,16 @@
           <div class="card-header">
             <div>
               <h2 class="card-title">Rekapitulasi Partisipasi per Divisi</h2>
-              <p class="card-subtitle">
+              <p v-if="isInternal" class="card-subtitle">
+                Survei internal hanya bisa diisi 1 kali per pegawai selama periode survei, jadi angka di
+                bawah adalah total seluruh periode (target = jumlah pegawai &times; 1).
+              </p>
+              <p v-else class="card-subtitle">
                 Sebaran pengisian survei berdasarkan unit kerja / divisi pada satu tanggal. Target
                 dihitung per hari (jumlah pegawai &times; max pengisian per hari).
               </p>
             </div>
-            <div class="card-header-actions">
+            <div v-if="!isInternal" class="card-header-actions">
               <div class="survey-filter">
                 <svg class="survey-filter-icon" width="14" height="14" viewBox="0 0 20 20" fill="none">
                   <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
@@ -430,7 +436,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { formatWibDateTime, wibToday } from "./lib/wib";
-import { useSurveyStore } from "./stores/surveyStore";
+import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
 // publicMode: the same report rendered on the public /report page. It
@@ -535,7 +541,7 @@ function departmentDetailLink(deptName) {
 // participationGroupedBy di surveyStore.js) — supaya total pegawai di
 // tabel "per Tanggal" dan "per Departemen" selalu konsisten.
 function buildDeptRow(key, deptNames) {
-  const maxPengisian = selectedSurveyFilter.value?.maxPengisian ?? 1;
+  const maxPengisian = surveyQuota(selectedSurveyFilter.value).limit;
   const deptSet = new Set(deptNames);
 
   const employeesHere = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja));
@@ -670,10 +676,15 @@ const selectedSurveyFilterRange = computed(() => {
 
 const noSurveySelected = computed(() => !selectedSurveyFilterId.value);
 
-// maxPengisian is a per-day limit, so the per-Divisi view (target vs voting)
-// is only meaningful for one chosen day.
+// External surveys have a per-day limit, so the per-Divisi view (target vs
+// voting) is only meaningful for one chosen day. Internal surveys are filled
+// once per employee for the whole period: no day to pick, and the numbers are
+// the totals for the entire period.
+const isInternal = computed(() => selectedSurveyFilter.value?.tipe === "Internal");
 const selectedTanggal = ref(typeof route.query.tanggal === "string" ? route.query.tanggal : "");
-const noFilterSelected = computed(() => noSurveySelected.value || !selectedTanggal.value);
+const noFilterSelected = computed(
+  () => noSurveySelected.value || (!isInternal.value && !selectedTanggal.value)
+);
 
 // A date from the previous survey may fall outside the new survey's period.
 watch(selectedSurveyFilterId, () => {
@@ -695,11 +706,12 @@ const filteredSubmissions = computed(() => {
   return source.filter((s) => s.surveyId === survey.id);
 });
 
-const deptSubmissions = computed(() =>
-  selectedTanggal.value
+const deptSubmissions = computed(() => {
+  if (isInternal.value) return filteredSubmissions.value;
+  return selectedTanggal.value
     ? filteredSubmissions.value.filter((s) => s.tanggal === selectedTanggal.value)
-    : []
-);
+    : [];
+});
 
 // Every day of the survey's period up to today (or its end), so the per-Tanggal
 // table also lists days with zero submissions — each day carries its own
@@ -724,7 +736,7 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
   const page = ref(1);
 
   const rows = computed(() => {
-    const maxPengisian = selectedSurveyFilter.value?.maxPengisian ?? 1;
+    const maxPengisian = surveyQuota(selectedSurveyFilter.value).limit;
     const list = store.participationGroupedBy(
       getKey,
       filteredSubmissions.value,
@@ -889,39 +901,51 @@ function exportToPdf() {
   doc.text(`Survei: ${surveyLabel}`, 14, 21);
   doc.text(`Diekspor pada: ${formatWibDateTime()}`, 14, 26);
 
-  const dateHead = JSON.parse(JSON.stringify(reportGroupHead));
-  dateHead[0][1].content = "Tanggal";
+  // The per-Tanggal table is for external surveys only; an internal survey
+  // (once per employee per period) goes straight to the per-Divisi table.
+  if (!isInternal.value) {
+    const dateHead = JSON.parse(JSON.stringify(reportGroupHead));
+    dateHead[0][1].content = "Tanggal";
 
-  doc.setFontSize(12);
-  doc.text("Rekapitulasi Partisipasi per Tanggal", 14, 34);
-  autoTable(doc, {
-    head: dateHead,
-    body: buildReportBody(dateTable.rows.value, dateTable.totals.value, formatDate),
-    startY: 37,
-    theme: "grid",
-    tableLineColor: [15, 23, 42],
-    tableLineWidth: 0.3,
-    styles: { fontSize: 8, halign: "center", lineColor: [180, 190, 205], lineWidth: 0.15 },
-    headStyles: {
-      fillColor: [0, 93, 172],
-      halign: "center",
-      lineColor: [255, 255, 255],
-      lineWidth: 0.15,
-    },
-    columnStyles: { 1: { halign: "left" } },
-    didDrawCell: drawSectionDividers,
-  });
+    doc.setFontSize(12);
+    doc.text("Rekapitulasi Partisipasi per Tanggal", 14, 34);
+    autoTable(doc, {
+      head: dateHead,
+      body: buildReportBody(dateTable.rows.value, dateTable.totals.value, formatDate),
+      startY: 37,
+      theme: "grid",
+      tableLineColor: [15, 23, 42],
+      tableLineWidth: 0.3,
+      styles: { fontSize: 8, halign: "center", lineColor: [180, 190, 205], lineWidth: 0.15 },
+      headStyles: {
+        fillColor: [0, 93, 172],
+        halign: "center",
+        lineColor: [255, 255, 255],
+        lineWidth: 0.15,
+      },
+      columnStyles: { 1: { halign: "left" } },
+      didDrawCell: drawSectionDividers,
+    });
+    doc.addPage();
+  }
 
   const deptHead = JSON.parse(JSON.stringify(reportGroupHead));
   deptHead[0][1].content = "Divisi";
 
-  doc.addPage();
+  // On the first page (internal) the header text above takes the top space.
+  const deptTitleY = isInternal.value ? 34 : 15;
   doc.setFontSize(12);
-  doc.text(`Rekapitulasi Partisipasi per Divisi - ${formatDate(selectedTanggal.value)}`, 14, 15);
+  doc.text(
+    isInternal.value
+      ? "Rekapitulasi Partisipasi per Divisi - seluruh periode survei"
+      : `Rekapitulasi Partisipasi per Divisi - ${formatDate(selectedTanggal.value)}`,
+    14,
+    deptTitleY
+  );
   autoTable(doc, {
     head: deptHead,
     body: buildReportBody(deptTable.rows.value, deptTable.totals.value, (key) => key),
-    startY: 18,
+    startY: deptTitleY + 3,
     theme: "grid",
     tableLineColor: [15, 23, 42],
     tableLineWidth: 0.3,
@@ -1017,15 +1041,18 @@ function exportToExcel() {
   const surveyLabel = selectedSurveyFilter.value.nama;
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    wb,
-    buildExcelSheet("Tanggal", dateTable.rows.value, dateTable.totals.value, formatDate),
-    "Per Tanggal"
-  );
+  // The per-Tanggal sheet is for external surveys only (see exportToPdf).
+  if (!isInternal.value) {
+    XLSX.utils.book_append_sheet(
+      wb,
+      buildExcelSheet("Tanggal", dateTable.rows.value, dateTable.totals.value, formatDate),
+      "Per Tanggal"
+    );
+  }
   XLSX.utils.book_append_sheet(
     wb,
     buildExcelSheet("Divisi", deptTable.rows.value, deptTable.totals.value, (key) => key),
-    `Per Divisi ${selectedTanggal.value}`
+    isInternal.value ? "Per Divisi" : `Per Divisi ${selectedTanggal.value}`
   );
 
   const slug = surveyLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

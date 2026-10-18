@@ -19,11 +19,20 @@
           <h2 class="card-title">Status Pengisian Pegawai</h2>
           <p class="card-subtitle" v-if="selectedSurvey">
             {{ selectedSurvey.nama }}
-            <span class="card-subtitle-range">&middot; Maks {{ selectedSurvey.maxPengisian }}x per pegawai per hari</span>
+            <span class="card-subtitle-range">
+              &middot;
+              {{
+                isInternal
+                  ? "1x per pegawai selama periode survei"
+                  : `Maks ${selectedSurvey.maxPengisian}x per pegawai per hari`
+              }}
+            </span>
           </p>
           <p class="card-subtitle" v-else>Belum ada survei dipilih.</p>
         </div>
+        <!-- Internal surveys are once per period, so there is no day to pick. -->
         <input
+          v-if="!isInternal"
           v-model="selectedTanggal"
           type="date"
           class="date-filter"
@@ -72,6 +81,7 @@ const selectedTanggal = ref(typeof route.query.tanggal === "string" ? route.quer
 const selectedSurvey = computed(() =>
   selectedSurveyId.value ? store.findSurvey(selectedSurveyId.value) : null
 );
+const isInternal = computed(() => selectedSurvey.value?.tipe === "Internal");
 
 const backToReportLink = computed(() => ({
   path: "/admin/report",

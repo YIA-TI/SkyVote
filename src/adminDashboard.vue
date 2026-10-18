@@ -23,7 +23,8 @@
             </option>
           </select>
         </div>
-        <div class="survey-filter">
+        <!-- No day to pick for an internal survey (once per period). -->
+        <div v-if="!isInternal" class="survey-filter">
           <svg class="survey-filter-icon" width="14" height="14" viewBox="0 0 20 20" fill="none">
             <rect x="3" y="4" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5" />
             <path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
@@ -154,7 +155,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
-import { useSurveyStore } from "./stores/surveyStore";
+import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 
 const store = useSurveyStore();
 
@@ -170,15 +171,20 @@ onMounted(async () => {
 });
 
 const selectedSurveyId = ref(null);
-// maxPengisian is a per-day limit, so target/voting only make sense for one
-// chosen day.
+// External surveys have a per-day limit, so target/voting only make sense for
+// one chosen day. Internal surveys are filled once per employee for the whole
+// period: no day to pick, and the numbers are totals for the entire period.
 const selectedTanggal = ref("");
 
 const noSurveySelected = computed(() => !selectedSurveyId.value);
-const noFilterSelected = computed(() => !selectedSurveyId.value || !selectedTanggal.value);
 
 const selectedSurvey = computed(() =>
   selectedSurveyId.value ? store.findSurvey(selectedSurveyId.value) : null
+);
+const isInternal = computed(() => selectedSurvey.value?.tipe === "Internal");
+
+const noFilterSelected = computed(
+  () => !selectedSurveyId.value || (!isInternal.value && !selectedTanggal.value)
 );
 
 // A date from the previous survey may fall outside the new survey's period.
@@ -194,11 +200,13 @@ watch(selectedSurveyId, () => {
   }
 });
 
-const maxPengisian = computed(() => selectedSurvey.value?.maxPengisian ?? 1);
+const maxPengisian = computed(() => surveyQuota(selectedSurvey.value).limit);
 
 const filteredSubmissions = computed(() => {
   const survey = selectedSurvey.value;
-  if (!survey || !selectedTanggal.value) return [];
+  if (!survey) return [];
+  if (isInternal.value) return store.submissions.filter((s) => s.surveyId === survey.id);
+  if (!selectedTanggal.value) return [];
   return store.submissions.filter(
     (s) => s.surveyId === survey.id && s.tanggal === selectedTanggal.value
   );

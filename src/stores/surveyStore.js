@@ -81,8 +81,19 @@ function toSurveyRow({
     tanggal_mulai: tanggalMulai || null,
     tanggal_selesai: tanggalSelesai || null,
     status: status || "Draft",
-    max_pengisian: Number(maxPengisian) || 20,
+    // Internal surveys are fixed at once per employee for the whole period.
+    max_pengisian: isInternal ? 1 : Number(maxPengisian) || 20,
   };
+}
+
+// The fill limit of a survey, in one place:
+//   - Internal: ONE submission per employee for the whole survey period.
+//   - External: `maxPengisian` submissions per employee PER DAY.
+// `perDay` says whether counts should be taken for a single date or across
+// every date. (The database enforces the same rule in enforce_submission_quota.)
+export function surveyQuota(survey) {
+  if (survey?.tipe === "Internal") return { limit: 1, perDay: false };
+  return { limit: survey?.maxPengisian ?? 1, perDay: true };
 }
 
 function mapQuestion(row) {
@@ -187,19 +198,27 @@ export const useSurveyStore = defineStore("survey", {
     submissionCountForSurvey: (state) => (surveyId) =>
       state.submissions.filter((s) => s.surveyId === surveyId).length,
 
-    // maxPengisian is a per-day limit, so pass `tanggal` to count only the
-    // submissions made for that day. Without it, counts all days (used for
-    // the employee's full history).
-    submissionCountForEmployeeSurvey: (state) => (surveyId, nama, tanggal) =>
-      state.submissions.filter(
-        (s) => s.surveyId === surveyId && s.nama === nama && (!tanggal || s.tanggal === tanggal)
-      ).length,
+    // External surveys limit per day, so pass `tanggal` to count only the
+    // submissions made for that day. Internal surveys limit per period, so
+    // `tanggal` is ignored and every date counts. Without `tanggal`, an
+    // external survey counts all days (the employee's full history).
+    submissionCountForEmployeeSurvey: (state) => (surveyId, nama, tanggal) => {
+      const { perDay } = surveyQuota(state.surveys.find((s) => s.id === surveyId));
+      return state.submissions.filter(
+        (s) =>
+          s.surveyId === surveyId &&
+          s.nama === nama &&
+          (!perDay || !tanggal || s.tanggal === tanggal)
+      ).length;
+    },
 
     isSurveyFullForEmployee() {
       return (surveyId, nama, tanggal) => {
         const survey = this.findSurvey(surveyId);
-        if (!survey || !survey.maxPengisian || !nama || !tanggal) return false;
-        return this.submissionCountForEmployeeSurvey(surveyId, nama, tanggal) >= survey.maxPengisian;
+        if (!survey || !nama) return false;
+        const { limit, perDay } = surveyQuota(survey);
+        if (!limit || (perDay && !tanggal)) return false;
+        return this.submissionCountForEmployeeSurvey(surveyId, nama, tanggal) >= limit;
       };
     },
 
