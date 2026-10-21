@@ -69,12 +69,7 @@
                 <span v-else class="remaining-badge remaining-done">Selesai</span>
               </td>
               <td class="col-action">
-                <button
-                  type="button"
-                  class="detail-button"
-                  :disabled="fillCountFor(employee) === 0"
-                  @click="openDetail(employee)"
-                >
+                <button type="button" class="detail-button" @click="openDetail(employee)">
                   Detail
                 </button>
               </td>
@@ -130,6 +125,7 @@
             <div>
               <h3 class="detail-modal-title">Bukti Survei — {{ detailEmployee.nama }}</h3>
               <p class="detail-modal-subtitle">{{ survey?.nama }}</p>
+              <p v-if="detailSummary" class="detail-modal-summary">{{ detailSummary }}</p>
             </div>
             <button type="button" class="detail-modal-close" @click="closeDetail">
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
@@ -138,58 +134,73 @@
             </button>
           </div>
 
-          <div v-if="detailSubmissions.length === 0" class="detail-modal-loading">
-            Belum ada bukti untuk survei ini.
+          <div v-if="detailRows.length === 0" class="detail-modal-loading">
+            {{ quota.perDay ? "Periode survei belum dimulai." : "Pegawai ini belum mengisi survei." }}
           </div>
           <table v-else class="detail-table">
             <thead>
               <tr>
                 <th class="col-no">No</th>
                 <th>Tanggal</th>
+                <th>Status</th>
                 <th>Waktu</th>
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              <template v-for="(sub, index) in detailSubmissions" :key="sub.id">
-                <tr>
+              <template v-for="(row, index) in detailRows" :key="row.key">
+                <tr v-if="!row.submission" class="detail-missed-row">
                   <td class="col-no">{{ index + 1 }}</td>
-                  <td>{{ sub.tanggal }}</td>
-                  <td>{{ submissionTime(sub) || "-" }}</td>
-                  <td>
-                    <template v-if="evidenceFiles(sub).length > 0">
-                      <button
-                        v-for="evidence in evidenceFiles(sub)"
-                        :key="evidence.key"
-                        type="button"
-                        class="detail-view-toggle"
-                        @click="toggleImage(evidence)"
-                      >
-                        {{ expandedKey === evidence.key ? "Tutup" : `Lihat ${evidence.label}` }}
-                      </button>
-                    </template>
-                    <span v-else class="detail-deleted-label">Gambar dihapus</span>
-                  </td>
+                  <td>{{ row.tanggal }}</td>
+                  <td><span class="fill-badge fill-empty">Tidak mengisi</span></td>
+                  <td>-</td>
+                  <td>-</td>
                 </tr>
-                <tr
-                  v-for="evidence in evidenceFiles(sub).filter((e) => e.key === expandedKey)"
-                  :key="`${evidence.key}-image`"
-                  class="detail-image-row"
-                >
-                  <td colspan="4">
-                    <p v-if="imageLoadingKey === evidence.key" class="detail-modal-loading">Memuat bukti...</p>
-                    <img
-                      v-else-if="imageUrls[evidence.key]"
-                      class="detail-list-image-el"
-                      :src="imageUrls[evidence.key]"
-                      :alt="`${evidence.label} ${detailEmployee.nama} ${sub.tanggal}`"
-                    />
-                    <p v-else class="detail-image-error">
-                      Gagal memuat bukti.<br />
-                      <span v-if="imageErrors[evidence.key]">{{ imageErrors[evidence.key] }}</span>
-                    </p>
-                  </td>
-                </tr>
+                <template v-else>
+                  <tr>
+                    <td class="col-no">{{ index + 1 }}</td>
+                    <td>{{ row.tanggal }}</td>
+                    <td>
+                      <span class="fill-badge" :class="row.dayCount >= quota.limit ? 'fill-full' : 'fill-partial'">
+                        Mengisi{{ quota.perDay ? ` ${row.dayCount}/${quota.limit}` : "" }}
+                      </span>
+                    </td>
+                    <td>{{ submissionTime(row.submission) || "-" }}</td>
+                    <td>
+                      <template v-if="row.evidence.length > 0">
+                        <button
+                          v-for="evidence in row.evidence"
+                          :key="evidence.key"
+                          type="button"
+                          class="detail-view-toggle"
+                          @click="toggleImage(evidence)"
+                        >
+                          {{ expandedKey === evidence.key ? "Tutup" : `Lihat ${evidence.label}` }}
+                        </button>
+                      </template>
+                      <span v-else class="detail-deleted-label">Gambar dihapus</span>
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="evidence in row.evidence.filter((e) => e.key === expandedKey)"
+                    :key="`${evidence.key}-image`"
+                    class="detail-image-row"
+                  >
+                    <td colspan="5">
+                      <p v-if="imageLoadingKey === evidence.key" class="detail-modal-loading">Memuat bukti...</p>
+                      <img
+                        v-else-if="imageUrls[evidence.key]"
+                        class="detail-list-image-el"
+                        :src="imageUrls[evidence.key]"
+                        :alt="`${evidence.label} ${detailEmployee.nama} ${row.tanggal}`"
+                      />
+                      <p v-else class="detail-image-error">
+                        Gagal memuat bukti.<br />
+                        <span v-if="imageErrors[evidence.key]">{{ imageErrors[evidence.key] }}</span>
+                      </p>
+                    </td>
+                  </tr>
+                </template>
               </template>
             </tbody>
           </table>
@@ -203,7 +214,7 @@
 import { computed, ref, watch } from "vue";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import { pageItems } from "../lib/pagination";
-import { formatWibTime } from "../lib/wib";
+import { formatWibTime, wibToday } from "../lib/wib";
 import { shortDeptName } from "../orgStructure";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "../stores/surveyStore";
 
@@ -277,12 +288,73 @@ function evidenceFiles(submission) {
   ].filter((e) => e.path);
 }
 
+// Every YYYY-MM-DD from `start` to `end`, inclusive. Done in UTC so the
+// device timezone can't skip or repeat a day.
+function datesBetween(start, end) {
+  const dates = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+// The days the employee was expected to fill: from the start of the survey
+// period up to today (or the end of the period, if it is already over).
+const detailDates = computed(() => {
+  const start = survey.value?.tanggalMulai || detailSubmissions.value[0]?.tanggal;
+  if (!start) return [];
+  const today = wibToday();
+  const end = survey.value?.tanggalSelesai && survey.value.tanggalSelesai < today ? survey.value.tanggalSelesai : today;
+  return datesBetween(start, end);
+});
+
+// External surveys are per day, so the detail lists every day of the period
+// and marks the days without a submission as "Tidak mengisi". Internal
+// surveys are once per period, so only the submission itself is listed.
+const detailRows = computed(() => {
+  const byDate = new Map();
+  for (const sub of detailSubmissions.value) {
+    if (!byDate.has(sub.tanggal)) byDate.set(sub.tanggal, []);
+    byDate.get(sub.tanggal).push(sub);
+  }
+
+  const toRows = (tanggal, subs) =>
+    subs.map((sub) => ({
+      key: sub.id,
+      tanggal,
+      submission: sub,
+      dayCount: subs.length,
+      evidence: evidenceFiles(sub),
+    }));
+
+  if (!quota.value.perDay) {
+    return [...byDate].flatMap(([tanggal, subs]) => toRows(tanggal, subs));
+  }
+
+  // Submissions outside the computed range (e.g. dated after today) still show.
+  const dates = new Set([...detailDates.value, ...byDate.keys()]);
+  return [...dates]
+    .sort()
+    .flatMap((tanggal) =>
+      byDate.has(tanggal) ? toRows(tanggal, byDate.get(tanggal)) : [{ key: `missed-${tanggal}`, tanggal, submission: null }]
+    );
+});
+
+const detailSummary = computed(() => {
+  if (!quota.value.perDay || detailDates.value.length === 0) return "";
+  const filledDays = detailDates.value.filter((d) => detailSubmissions.value.some((s) => s.tanggal === d)).length;
+  return `Mengisi ${filledDays} dari ${detailDates.value.length} hari (${detailDates.value[0]} s.d. ${detailDates.value.at(-1)})`;
+});
+
 function openDetail(employee) {
   if (!props.surveyId) return;
   detailEmployee.value = employee;
-  detailSubmissions.value = store.submissions.filter(
-    (s) => s.surveyId === props.surveyId && s.nama === employee.nama
-  );
+  detailSubmissions.value = store.submissions
+    .filter((s) => s.surveyId === props.surveyId && s.nama === employee.nama)
+    .sort((a, b) => a.tanggal.localeCompare(b.tanggal) || String(a.createdAt).localeCompare(String(b.createdAt)));
   expandedKey.value = null;
   imageUrls.value = {};
 }
@@ -701,6 +773,17 @@ const pagedEmployees = computed(() => filteredEmployees.value.slice(pageStart.va
   font-size: 12.5px;
   color: var(--color-text-muted);
   margin-top: 2px;
+}
+
+.detail-modal-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-top: 6px;
+}
+
+.detail-missed-row td {
+  color: var(--color-text-muted);
 }
 
 .detail-modal-close {
