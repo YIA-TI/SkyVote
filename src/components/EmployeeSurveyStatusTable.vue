@@ -343,10 +343,14 @@ const detailRows = computed(() => {
     );
 });
 
+// "Jumlah vote X dari target Y (periode)". Vote = all the employee's
+// submissions to this survey; target = days in the listed range x the per-day
+// limit (e.g. 11 days x 2 = 22), the same range the day-by-day table shows.
 const detailSummary = computed(() => {
   if (!quota.value.perDay || detailDates.value.length === 0) return "";
-  const filledDays = detailDates.value.filter((d) => detailSubmissions.value.some((s) => s.tanggal === d)).length;
-  return `Mengisi ${filledDays} dari ${detailDates.value.length} hari (${detailDates.value[0]} s.d. ${detailDates.value.at(-1)})`;
+  const vote = detailSubmissions.value.length;
+  const target = detailDates.value.length * quota.value.limit;
+  return `Jumlah vote ${vote} dari target ${target} (${detailDates.value[0]} s.d. ${detailDates.value.at(-1)})`;
 });
 
 function openDetail(employee) {
