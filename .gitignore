@@ -41,3 +41,8 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Data impor bukti (berisi nama pegawai dan foto) -- jangan pernah di-commit
+scripts/import-output/
+import-data/
+scripts/import-data/
