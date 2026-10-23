@@ -424,6 +424,68 @@
             </div>
           </div>
         </div>
+
+        <!-- Admin only: lists employee names, which the public /report page
+             never shows (it only gets aggregate numbers). -->
+        <div v-if="!publicMode" class="report-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">{{ RANK_SIZE }} Pegawai dengan Vote Tersedikit</h2>
+              <p v-if="isInternal" class="card-subtitle">
+                Survei internal hanya bisa diisi 1 kali per pegawai, jadi pegawai yang belum mengisi (0 vote)
+                tampil lebih dulu, diurutkan menurut nama.
+              </p>
+              <p v-else class="card-subtitle">
+                Total vote setiap pegawai aktif selama periode survei sampai hari ini, dari yang paling
+                sedikit. Pegawai yang belum pernah mengisi (0 vote) ikut dihitung.
+              </p>
+            </div>
+          </div>
+
+          <p v-if="noSurveySelected" class="rank-empty rank-empty-warning">
+            ⚠️ Pilih survei terlebih dahulu untuk melihat peringkat.
+          </p>
+          <p v-else-if="lowestVoters.rows.length === 0" class="rank-empty">
+            Belum ada data pegawai aktif.
+          </p>
+          <template v-else>
+            <div class="table-scroll">
+              <table class="rank-table">
+                <thead>
+                  <tr>
+                    <th class="rank-col-no">No</th>
+                    <th>Nama Pegawai</th>
+                    <th>Unit</th>
+                    <th>Organik/TAD</th>
+                    <th class="rank-col-num">Vote</th>
+                    <th class="rank-col-num">Target</th>
+                    <th class="rank-col-num">Persentase</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, index) in lowestVoters.rows" :key="row.id">
+                    <td class="rank-col-no">{{ index + 1 }}</td>
+                    <td class="rank-name">{{ row.nama }}</td>
+                    <td>{{ shortDeptName(row.unit) }}</td>
+                    <td>{{ jenisPegawaiLabel(row.jenis) }}</td>
+                    <td class="rank-col-num">
+                      <span class="gap-value" :class="row.vote === 0 ? 'gap-pending' : ''">{{ row.vote }}</span>
+                    </td>
+                    <td class="rank-col-num">{{ row.target ?? "-" }}</td>
+                    <td class="rank-col-num">
+                      <span class="percent-bold">{{ row.persen === null ? "-" : `${row.persen}%` }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-if="lowestVoters.tied > 0" class="rank-note">
+              Masih ada <strong>{{ lowestVoters.tied }}</strong> pegawai lain dengan jumlah vote yang sama
+              ({{ lowestVoters.cutoff }}) yang tidak masuk daftar. Urutan di antara pegawai dengan vote yang
+              sama mengikuti abjad nama.
+            </p>
+          </template>
+        </div>
     </div>
   </div>
 </template>
@@ -436,7 +498,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { formatWibDateTime, wibToday } from "./lib/wib";
-import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
+import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
 // publicMode: the same report rendered on the public /report page. It
@@ -730,6 +792,50 @@ const periodDates = computed(() => {
     cursor += 24 * 60 * 60 * 1000;
   }
   return dates;
+});
+
+// ── Pegawai dengan vote tersedikit ─────────────────────────────────────────
+// Every ACTIVE employee, including those with 0 votes, ranked from the fewest
+// votes up; equal votes are ordered by name so the list is stable. Vote = all of
+// the employee's submissions to the survey (matched by name, like the rest of
+// the report). Target = days in the period so far x the per-day limit for
+// external surveys (the same basis as the Bukti Survei dialog), or 1 for an
+// internal survey; there is no target for an external survey without a period.
+const RANK_SIZE = 20;
+
+const lowestVoters = computed(() => {
+  const empty = { rows: [], tied: 0, cutoff: 0 };
+  const survey = selectedSurveyFilter.value;
+  if (props.publicMode || !survey) return empty;
+
+  const { limit, perDay } = surveyQuota(survey);
+  const target = perDay ? (periodDates.value.length > 0 ? periodDates.value.length * limit : null) : limit;
+
+  const votes = new Map();
+  for (const s of filteredSubmissions.value) votes.set(s.nama, (votes.get(s.nama) ?? 0) + 1);
+
+  const ranked = store.employees
+    .filter((e) => e.isActive)
+    .map((e) => {
+      const vote = votes.get(e.nama) ?? 0;
+      return {
+        id: e.id,
+        nama: e.nama,
+        unit: e.unitKerja,
+        jenis: e.jenisPegawai,
+        vote,
+        target,
+        persen: target ? Math.round((vote / target) * 1000) / 10 : null,
+      };
+    })
+    .sort((a, b) => a.vote - b.vote || a.nama.localeCompare(b.nama, "id"));
+
+  const rows = ranked.slice(0, RANK_SIZE);
+  // Employees just past the cut with the same vote count as the last one shown.
+  const cutoff = rows.at(-1)?.vote ?? 0;
+  const tied =
+    rows.length === RANK_SIZE ? ranked.slice(RANK_SIZE).filter((r) => r.vote === cutoff).length : 0;
+  return { rows, tied, cutoff };
 });
 
 function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
@@ -1545,6 +1651,75 @@ function exportToExcel() {
 
 .gap-pending {
   color: var(--color-danger);
+}
+
+/* "Pegawai dengan vote tersedikit" table */
+.rank-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 13px;
+  background-color: var(--color-surface);
+}
+
+.rank-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.rank-table td {
+  padding: 10px 12px;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rank-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rank-table tbody tr:hover td {
+  background-color: rgba(248, 250, 252, 0.8);
+}
+
+.rank-col-no {
+  width: 44px;
+  color: var(--color-text-muted);
+}
+
+.rank-col-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.rank-name {
+  font-weight: 600;
+}
+
+.rank-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.rank-empty-warning {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+}
+
+.rank-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 .percent-bold {
