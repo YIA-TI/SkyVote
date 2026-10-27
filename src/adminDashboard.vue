@@ -44,6 +44,7 @@
       <p v-if="noFilterSelected" class="survey-required-warning">
         ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
+      <LoadingSpinner v-else-if="!dataReady" />
 
       <template v-else>
         <div class="stat-box">
@@ -107,6 +108,7 @@
       <p v-if="noFilterSelected" class="survey-required-warning">
         ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
+      <LoadingSpinner v-else-if="!dataReady" />
 
       <template v-else>
         <div class="legend">
@@ -154,6 +156,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
+import LoadingSpinner from "./components/LoadingSpinner.vue";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 
@@ -161,8 +164,16 @@ const store = useSurveyStore();
 
 const chartMounted = ref(false);
 
+// False while the surveys / employees / submissions are still being fetched, so
+// picking a survey early shows a spinner instead of half-empty charts.
+const dataReady = ref(false);
+
 onMounted(async () => {
-  await store.ensureBaseData();
+  try {
+    await store.ensureBaseData();
+  } finally {
+    dataReady.value = true;
+  }
   // Start bars at 0% and grow them into place on the very first paint,
   // so navigating into the dashboard always plays the "bars rising" entrance.
   requestAnimationFrame(() => {

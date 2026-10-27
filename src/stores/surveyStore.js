@@ -160,6 +160,10 @@ function mapNotification(row) {
 // the survey name, since surveys may not be loaded again) in sessionStorage.
 const LAST_SUBMISSION_KEY = "skyvote:lastSubmission";
 
+// The currently running initial load, if any (see ensureBaseData / ensurePublicData).
+let baseDataPromise = null;
+let publicDataPromise = null;
+
 function loadLastSubmission() {
   try {
     const raw = sessionStorage.getItem(LAST_SUBMISSION_KEY);
@@ -441,14 +445,30 @@ export const useSurveyStore = defineStore("survey", {
     // visitors), departments and workforce totals cuts each visit from ~7 API
     // requests to ~3. Kept separate from baseDataLoaded so an admin who lands
     // here first still gets the full set later.
+    // In-flight loads are shared: when two pages ask while the first request set
+    // is still running (e.g. quick navigation), they wait for the same one
+    // instead of each firing a full set of API requests.
     async ensurePublicData() {
       if (this.publicDataLoaded || this.baseDataLoaded) return;
-      await Promise.all([this.fetchSurveys(), this.fetchEmployees()]);
-      this.publicDataLoaded = true;
+      publicDataPromise ??= Promise.all([this.fetchSurveys(), this.fetchEmployees()])
+        .then(() => {
+          this.publicDataLoaded = true;
+        })
+        .finally(() => {
+          publicDataPromise = null;
+        });
+      return publicDataPromise;
     },
 
     async ensureBaseData() {
       if (this.baseDataLoaded) return;
+      baseDataPromise ??= this.loadBaseData().finally(() => {
+        baseDataPromise = null;
+      });
+      return baseDataPromise;
+    },
+
+    async loadBaseData() {
       await Promise.all([
         this.fetchSurveys(),
         this.fetchEmployees(),

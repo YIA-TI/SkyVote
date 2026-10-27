@@ -30,14 +30,14 @@
           </button>
           <span v-if="lastUpdated" class="refresh-time">Diperbarui {{ lastUpdated }}</span>
         </div>
-        <button type="button" class="btn-export" :disabled="noFilterSelected" @click="exportToPdf">
+        <button type="button" class="btn-export" :disabled="noFilterSelected || reportLoading" @click="exportToPdf">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
             <path d="M4 14v2a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
           Ekspor ke PDF
         </button>
-        <button type="button" class="btn-export btn-export-excel" :disabled="noFilterSelected" @click="exportToExcel">
+        <button type="button" class="btn-export btn-export-excel" :disabled="noFilterSelected || reportLoading" @click="exportToExcel">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
             <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
             <path d="M4 14v2a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16v-2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -105,7 +105,7 @@
                 </tr>
               </thead>
               <tbody>
-                <template v-for="(row, index) in dateTable.pagedRows.value" :key="row.key">
+                <template v-for="(row, index) in (reportLoading ? [] : dateTable.pagedRows.value)" :key="row.key">
                   <tr>
                     <td>{{ dateTable.pageStart.value + index + 1 }}</td>
                     <td>
@@ -131,10 +131,13 @@
                     ⚠️ Pilih survei terlebih dahulu untuk melihat data partisipasi.
                   </td>
                 </tr>
+                <tr v-else-if="reportLoading">
+                  <td colspan="15" class="empty-row"><LoadingSpinner /></td>
+                </tr>
                 <tr v-else-if="dateTable.rows.value.length === 0">
                   <td colspan="15" class="empty-row">Belum ada data partisipasi survei.</td>
                 </tr>
-                <tr v-if="dateTable.rows.value.length > 0" class="total-row">
+                <tr v-if="!reportLoading && dateTable.rows.value.length > 0" class="total-row">
                   <td colspan="2">Total Akumulasi</td>
                   <td>{{ dateTable.totals.value.pegawaiOrganik }}</td>
                   <td>{{ dateTable.totals.value.targetOrganik }}</td>
@@ -259,7 +262,7 @@
                 </tr>
               </thead>
               <tbody>
-                <template v-for="(row, index) in deptTable.pagedRows.value" :key="row.key">
+                <template v-for="(row, index) in (reportLoading ? [] : deptTable.pagedRows.value)" :key="row.key">
                   <tr>
                     <td>{{ deptTable.pageStart.value + index + 1 }}</td>
                     <td>
@@ -373,10 +376,13 @@
                     ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
                   </td>
                 </tr>
+                <tr v-else-if="reportLoading">
+                  <td colspan="15" class="empty-row"><LoadingSpinner /></td>
+                </tr>
                 <tr v-else-if="deptTable.rows.value.length === 0">
                   <td colspan="15" class="empty-row">Belum ada data partisipasi survei.</td>
                 </tr>
-                <tr v-if="deptTable.rows.value.length > 0" class="total-row">
+                <tr v-if="!reportLoading && deptTable.rows.value.length > 0" class="total-row">
                   <td colspan="2">Total Akumulasi</td>
                   <td>{{ deptTable.totals.value.pegawaiOrganik }}</td>
                   <td>{{ deptTable.totals.value.targetOrganik }}</td>
@@ -445,6 +451,7 @@
           <p v-if="noSurveySelected" class="rank-empty rank-empty-warning">
             ⚠️ Pilih survei terlebih dahulu untuk melihat peringkat.
           </p>
+          <LoadingSpinner v-else-if="reportLoading" />
           <p v-else-if="lowestVoters.rows.length === 0" class="rank-empty">
             Belum ada data pegawai aktif.
           </p>
@@ -503,6 +510,7 @@
           <p v-if="noSurveySelected" class="rank-empty rank-empty-warning">
             ⚠️ Pilih survei terlebih dahulu untuk melihat peringkat.
           </p>
+          <LoadingSpinner v-else-if="reportLoading" />
           <template v-else>
             <p v-if="lowestDepartments.noTarget" class="rank-note rank-note-warning">
               Survei ini tidak punya periode tetap, jadi target dan persentase tidak bisa dihitung. Daftar
@@ -562,6 +570,7 @@ import {
   shortDeptName,
 } from "./orgStructure";
 import { formatWibDateTime, wibToday } from "./lib/wib";
+import LoadingSpinner from "./components/LoadingSpinner.vue";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
@@ -582,6 +591,16 @@ const publicSubmissions = ref([]);
 
 const surveyOptions = computed(() => (props.publicMode ? publicSurveys.value : store.surveys));
 
+// Spinner state. `dataReady` stays false until the surveys / employees /
+// submissions finish loading on first open; `publicLoading` is true while the
+// public view fetches the numbers for a newly picked survey. Either one means
+// the tables would show empty or partial numbers, so a spinner is shown
+// instead. (A manual refresh keeps the old numbers on screen; its button
+// shows progress.)
+const dataReady = ref(false);
+const publicLoading = ref(false);
+const reportLoading = computed(() => !dataReady.value || publicLoading.value);
+
 // "Muat Ulang" button + the "Diperbarui HH.MM WIB" label next to it.
 const refreshing = ref(false);
 const lastUpdated = ref("");
@@ -596,20 +615,25 @@ function markUpdated() {
 }
 
 onMounted(async () => {
-  // Employees (public read) are needed for the Jumlah / Target columns. The
-  // public view skips the admin-only tables (submissions etc.) entirely.
-  await (props.publicMode ? store.ensurePublicData() : store.ensureBaseData());
-  if (props.publicMode) {
-    try {
-      publicSurveys.value = await store.fetchPublicReportSurveys();
-      if (!selectedSurveyFilterId.value) {
-        selectedSurveyFilterId.value = publicSurveys.value[0]?.id ?? null;
+  try {
+    // Employees (public read) are needed for the Jumlah / Target columns. The
+    // public view skips the admin-only tables (submissions etc.) entirely.
+    await (props.publicMode ? store.ensurePublicData() : store.ensureBaseData());
+    if (props.publicMode) {
+      try {
+        publicSurveys.value = await store.fetchPublicReportSurveys();
+        if (!selectedSurveyFilterId.value) {
+          selectedSurveyFilterId.value = publicSurveys.value[0]?.id ?? null;
+        }
+      } catch (err) {
+        console.error("Gagal memuat daftar survei:", err);
       }
-    } catch (err) {
-      console.error("Gagal memuat daftar survei:", err);
     }
+    markUpdated();
+  } finally {
+    // Also on failure, so the spinner never sticks.
+    dataReady.value = true;
   }
-  markUpdated();
 });
 
 // Re-fetches everything the report is built from. Public mode goes through
@@ -771,9 +795,16 @@ let publicRequest = 0;
 async function loadPublicSubmissions(surveyId, { clear = true } = {}) {
   const request = ++publicRequest;
   if (clear) publicSubmissions.value = [];
+  publicLoading.value = clear && !!surveyId;
   if (!surveyId) return;
-  const rows = await store.fetchPublicReportSubmissions(surveyId);
-  if (request === publicRequest) publicSubmissions.value = rows;
+  try {
+    const rows = await store.fetchPublicReportSubmissions(surveyId);
+    if (request === publicRequest) publicSubmissions.value = rows;
+  } finally {
+    // Only the latest request may end the loading state; an older, slower one
+    // finishing late must not hide the spinner of a newer survey pick.
+    if (clear && request === publicRequest) publicLoading.value = false;
+  }
 }
 
 watch(
