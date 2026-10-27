@@ -490,13 +490,12 @@
         <div v-if="!publicMode" class="report-card">
           <div class="card-header">
             <div>
-              <h2 class="card-title">{{ DIVISION_RANK_SIZE }} Divisi dengan Vote Tersedikit</h2>
+              <h2 class="card-title">{{ DEPT_RANK_SIZE }} Department Head dengan Persentase Pengisian Terendah</h2>
               <p class="card-subtitle">
-                Total vote selama
+                Persentase pengisian = total vote &divide; target selama
                 {{ isInternal ? "periode survei" : "periode survei sampai hari ini" }}, dari yang paling
-                sedikit. Hanya unit kepala divisi (Division Head) yang dihitung; departemen di bawahnya tidak
-                ikut. Karena jumlah pegawai tiap kepala divisi berbeda, lihat kolom Persentase untuk
-                membandingkan secara adil.
+                rendah. Yang dihitung unit Department Head beserta pegawainya (kepala divisi tidak ikut), dan
+                unit tanpa pegawai aktif dilewati.
               </p>
             </div>
           </div>
@@ -505,11 +504,16 @@
             ⚠️ Pilih survei terlebih dahulu untuk melihat peringkat.
           </p>
           <template v-else>
+            <p v-if="lowestDepartments.noTarget" class="rank-note rank-note-warning">
+              Survei ini tidak punya periode tetap, jadi target dan persentase tidak bisa dihitung. Daftar
+              diurutkan menurut jumlah vote yang paling sedikit.
+            </p>
             <div class="table-scroll">
               <table class="rank-table">
                 <thead>
                   <tr>
                     <th class="rank-col-no">No</th>
+                    <th>Department Head</th>
                     <th>Divisi</th>
                     <th class="rank-col-num">Pegawai</th>
                     <th class="rank-col-num">Vote</th>
@@ -518,9 +522,10 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(row, index) in lowestDivisions.rows" :key="row.key">
+                  <tr v-for="(row, index) in lowestDepartments.rows" :key="row.unit">
                     <td class="rank-col-no">{{ index + 1 }}</td>
-                    <td class="rank-name">{{ row.key }}</td>
+                    <td class="rank-name">{{ shortDeptName(row.unit) }}</td>
+                    <td>{{ row.divisi }}</td>
                     <td class="rank-col-num">{{ row.pegawai }}</td>
                     <td class="rank-col-num">
                       <span class="gap-value" :class="row.vote === 0 ? 'gap-pending' : ''">{{ row.vote }}</span>
@@ -533,10 +538,10 @@
                 </tbody>
               </table>
             </div>
-            <p v-if="lowestDivisions.tied > 0" class="rank-note">
-              Masih ada <strong>{{ lowestDivisions.tied }}</strong> divisi lain dengan jumlah vote yang sama
-              ({{ lowestDivisions.cutoff }}) yang tidak masuk daftar. Urutan di antara divisi dengan vote yang
-              sama mengikuti abjad nama.
+            <p v-if="lowestDepartments.tied > 0" class="rank-note">
+              Masih ada <strong>{{ lowestDepartments.tied }}</strong> Department Head lain dengan nilai yang
+              sama ({{ lowestDepartments.cutoffLabel }}) yang tidak masuk daftar. Urutan di antara nilai yang
+              sama mengikuti jumlah vote, lalu abjad nama.
             </p>
           </template>
         </div>
@@ -861,7 +866,7 @@ const periodDates = computed(() => {
 // external surveys (the same basis as the Bukti Survei dialog), or 1 for an
 // internal survey; there is no target for an external survey without a period.
 const RANK_SIZE = 20;
-const DIVISION_RANK_SIZE = 5;
+const DEPT_RANK_SIZE = 5;
 
 // One employee's target over the period (shared by both rankings): external =
 // days so far x per-day limit, null when the survey has no fixed period;
@@ -908,41 +913,56 @@ const lowestVoters = computed(() => {
   return { rows, tied, cutoff };
 });
 
-// ── Divisi dengan vote tersedikit ──────────────────────────────────────────
-// Ranks the divisions by their TOTAL votes over the whole period (not one
-// day), fewest first; equal votes are ordered by name. Only the division's OWN
-// head unit counts (ORG_HEAD_BY_PARENT) — not the departments beneath it, which
-// the per-Divisi table above already covers. Vote = submissions recorded under
-// that unit; target = its active employees x one employee's target. Divisions
-// have different numbers of people in their head unit, so the target and
-// percentage are shown beside the count.
-const lowestDivisions = computed(() => {
-  const empty = { rows: [], tied: 0, cutoff: 0 };
+// ── Department Head dengan persentase pengisian terendah ───────────────────
+// Ranks the Department Head units (every unit except each division's own head)
+// by fill percentage = votes / target over the whole period, lowest first.
+// Votes are the submissions recorded under the unit; target = its active
+// employees x one employee's target. Units with no active employees are
+// skipped (no target to compare against). Ratios that tie are ordered by fewer
+// votes, then by name. A survey with no fixed period has no target, so the
+// units are then ranked by vote count instead (`noTarget`).
+const lowestDepartments = computed(() => {
+  const empty = { rows: [], tied: 0, cutoffLabel: "", noTarget: false };
   if (props.publicMode || !selectedSurveyFilter.value) return empty;
 
   const perEmployee = perEmployeeTarget.value;
+  const noTarget = perEmployee === null;
+  const heads = new Set(ORG_HEAD_BY_PARENT.values());
 
-  const ranked = ORG_PARENT_KEYS.map((key) => {
-    const head = ORG_HEAD_BY_PARENT.get(key);
-    const pegawai = store.employees.filter((e) => e.isActive && e.unitKerja === head).length;
-    const vote = filteredSubmissions.value.filter((s) => s.departemen === head).length;
-    const target = perEmployee === null ? null : pegawai * perEmployee;
-    return {
-      key,
-      pegawai,
-      vote,
-      target,
-      persen: target ? Math.round((vote / target) * 1000) / 10 : null,
-    };
-  }).sort((a, b) => a.vote - b.vote || a.key.localeCompare(b.key, "id"));
+  const units = ORG_PARENT_KEYS.flatMap((divisi) =>
+    (ORG_CHILDREN_BY_PARENT.get(divisi) ?? []).filter((unit) => !heads.has(unit)).map((unit) => ({ unit, divisi }))
+  );
 
-  const rows = ranked.slice(0, DIVISION_RANK_SIZE);
-  const cutoff = rows.at(-1)?.vote ?? 0;
+  const ranked = units
+    .map(({ unit, divisi }) => {
+      const pegawai = store.employees.filter((e) => e.isActive && e.unitKerja === unit).length;
+      const vote = filteredSubmissions.value.filter((s) => s.departemen === unit).length;
+      const target = noTarget ? null : pegawai * perEmployee;
+      const ratio = target ? vote / target : null;
+      return {
+        unit,
+        divisi,
+        pegawai,
+        vote,
+        target,
+        ratio,
+        persen: ratio === null ? null : Math.round(ratio * 1000) / 10,
+      };
+    })
+    .filter((row) => row.pegawai > 0)
+    .sort((a, b) =>
+      noTarget
+        ? a.vote - b.vote || a.unit.localeCompare(b.unit, "id")
+        : a.ratio - b.ratio || a.vote - b.vote || a.unit.localeCompare(b.unit, "id")
+    );
+
+  const rows = ranked.slice(0, DEPT_RANK_SIZE);
+  const last = rows.at(-1);
+  const sameAsLast = (r) => (noTarget ? r.vote === last.vote : r.ratio === last.ratio);
   const tied =
-    rows.length === DIVISION_RANK_SIZE
-      ? ranked.slice(DIVISION_RANK_SIZE).filter((r) => r.vote === cutoff).length
-      : 0;
-  return { rows, tied, cutoff };
+    rows.length === DEPT_RANK_SIZE ? ranked.slice(DEPT_RANK_SIZE).filter(sameAsLast).length : 0;
+  const cutoffLabel = !last ? "" : noTarget ? `${last.vote} vote` : `${last.persen}%`;
+  return { rows, tied, cutoffLabel, noTarget };
 });
 
 function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
@@ -1827,6 +1847,14 @@ function exportToExcel() {
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-muted);
+}
+
+.rank-note-warning {
+  padding: 8px 10px;
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-warning-bg);
+  color: #92400e;
 }
 
 .percent-bold {
