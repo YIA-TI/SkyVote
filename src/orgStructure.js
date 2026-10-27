@@ -9,11 +9,13 @@
 export const ORG_STRUCTURE = [
   {
     key: "General Manager",
+    head: "General Manager",
     // The GM office itself.
     children: ["General Manager"],
   },
   {
     key: "Airport Operation Center Head",
+    head: "Airport Operation Center Head",
     // The division head itself (same name as the division, like "General
     // Manager" above) listed first, then the units that report to it.
     children: [
@@ -27,6 +29,7 @@ export const ORG_STRUCTURE = [
   },
   {
     key: "Airport Quality & Safety Management System",
+    head: "Airport Quality & Safety Management System Division Head",
     // Division Head listed first, then its Department Heads.
     children: [
       "Airport Quality & Safety Management System Division Head",
@@ -36,6 +39,7 @@ export const ORG_STRUCTURE = [
   },
   {
     key: "Airport Operation, Services & Security",
+    head: "Airport Operation, Services & Security Division Head",
     children: [
       "Airport Operation, Services & Security Division Head",
       "Airport Operation Airside Department Head",
@@ -48,6 +52,7 @@ export const ORG_STRUCTURE = [
   },
   {
     key: "Airport Technical",
+    head: "Airport Technical Division Head",
     children: [
       "Airport Technical Division Head",
       "Airport Facilities Department Head",
@@ -58,6 +63,7 @@ export const ORG_STRUCTURE = [
   },
   {
     key: "Airport Commercial",
+    head: "Airport Commercial Division Head",
     children: [
       "Airport Commercial Division Head",
       "Aero Commercial Department Head",
@@ -67,6 +73,11 @@ export const ORG_STRUCTURE = [
 ];
 
 export const ORG_PARENT_KEYS = ORG_STRUCTURE.map((group) => group.key);
+
+// The unit that is the division's own head (also listed in `children`). The
+// "divisions with the fewest votes" ranking counts only this unit, not the
+// departments beneath it.
+export const ORG_HEAD_BY_PARENT = new Map(ORG_STRUCTURE.map((group) => [group.key, group.head]));
 
 export const ORG_CHILDREN_BY_PARENT = new Map(
   ORG_STRUCTURE.map((group) => [group.key, group.children])

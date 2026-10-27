@@ -492,10 +492,11 @@
             <div>
               <h2 class="card-title">{{ DIVISION_RANK_SIZE }} Divisi dengan Vote Tersedikit</h2>
               <p class="card-subtitle">
-                Total vote setiap divisi selama
+                Total vote selama
                 {{ isInternal ? "periode survei" : "periode survei sampai hari ini" }}, dari yang paling
-                sedikit. Diurutkan menurut jumlah vote, jadi divisi yang pegawainya sedikit cenderung berada
-                di atas; lihat kolom Persentase untuk membandingkan secara adil.
+                sedikit. Hanya unit kepala divisi (Division Head) yang dihitung; departemen di bawahnya tidak
+                ikut. Karena jumlah pegawai tiap kepala divisi berbeda, lihat kolom Persentase untuk
+                membandingkan secara adil.
               </p>
             </div>
           </div>
@@ -549,7 +550,12 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
+import {
+  ORG_CHILDREN_BY_PARENT,
+  ORG_HEAD_BY_PARENT,
+  ORG_PARENT_KEYS,
+  shortDeptName,
+} from "./orgStructure";
 import { formatWibDateTime, wibToday } from "./lib/wib";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
@@ -904,11 +910,12 @@ const lowestVoters = computed(() => {
 
 // ── Divisi dengan vote tersedikit ──────────────────────────────────────────
 // Ranks the divisions by their TOTAL votes over the whole period (not one
-// day), fewest first; equal votes are ordered by name. Vote = submissions whose
-// recorded unit belongs to the division (same basis as the per-Divisi table);
-// target = active employees in the division x one employee's target. Since the
-// ranking is by raw votes, a small division naturally ranks low, so the target
-// and percentage are shown beside the count.
+// day), fewest first; equal votes are ordered by name. Only the division's OWN
+// head unit counts (ORG_HEAD_BY_PARENT) — not the departments beneath it, which
+// the per-Divisi table above already covers. Vote = submissions recorded under
+// that unit; target = its active employees x one employee's target. Divisions
+// have different numbers of people in their head unit, so the target and
+// percentage are shown beside the count.
 const lowestDivisions = computed(() => {
   const empty = { rows: [], tied: 0, cutoff: 0 };
   if (props.publicMode || !selectedSurveyFilter.value) return empty;
@@ -916,9 +923,9 @@ const lowestDivisions = computed(() => {
   const perEmployee = perEmployeeTarget.value;
 
   const ranked = ORG_PARENT_KEYS.map((key) => {
-    const units = new Set(ORG_CHILDREN_BY_PARENT.get(key) ?? []);
-    const pegawai = store.employees.filter((e) => e.isActive && units.has(e.unitKerja)).length;
-    const vote = filteredSubmissions.value.filter((s) => units.has(s.departemen)).length;
+    const head = ORG_HEAD_BY_PARENT.get(key);
+    const pegawai = store.employees.filter((e) => e.isActive && e.unitKerja === head).length;
+    const vote = filteredSubmissions.value.filter((s) => s.departemen === head).length;
     const target = perEmployee === null ? null : pegawai * perEmployee;
     return {
       key,
