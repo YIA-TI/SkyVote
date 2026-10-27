@@ -486,6 +486,59 @@
             </p>
           </template>
         </div>
+
+        <div v-if="!publicMode" class="report-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">{{ DIVISION_RANK_SIZE }} Divisi dengan Vote Tersedikit</h2>
+              <p class="card-subtitle">
+                Total vote setiap divisi selama
+                {{ isInternal ? "periode survei" : "periode survei sampai hari ini" }}, dari yang paling
+                sedikit. Diurutkan menurut jumlah vote, jadi divisi yang pegawainya sedikit cenderung berada
+                di atas; lihat kolom Persentase untuk membandingkan secara adil.
+              </p>
+            </div>
+          </div>
+
+          <p v-if="noSurveySelected" class="rank-empty rank-empty-warning">
+            ⚠️ Pilih survei terlebih dahulu untuk melihat peringkat.
+          </p>
+          <template v-else>
+            <div class="table-scroll">
+              <table class="rank-table">
+                <thead>
+                  <tr>
+                    <th class="rank-col-no">No</th>
+                    <th>Divisi</th>
+                    <th class="rank-col-num">Pegawai</th>
+                    <th class="rank-col-num">Vote</th>
+                    <th class="rank-col-num">Target</th>
+                    <th class="rank-col-num">Persentase</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, index) in lowestDivisions.rows" :key="row.key">
+                    <td class="rank-col-no">{{ index + 1 }}</td>
+                    <td class="rank-name">{{ row.key }}</td>
+                    <td class="rank-col-num">{{ row.pegawai }}</td>
+                    <td class="rank-col-num">
+                      <span class="gap-value" :class="row.vote === 0 ? 'gap-pending' : ''">{{ row.vote }}</span>
+                    </td>
+                    <td class="rank-col-num">{{ row.target ?? "-" }}</td>
+                    <td class="rank-col-num">
+                      <span class="percent-bold">{{ row.persen === null ? "-" : `${row.persen}%` }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-if="lowestDivisions.tied > 0" class="rank-note">
+              Masih ada <strong>{{ lowestDivisions.tied }}</strong> divisi lain dengan jumlah vote yang sama
+              ({{ lowestDivisions.cutoff }}) yang tidak masuk daftar. Urutan di antara divisi dengan vote yang
+              sama mengikuti abjad nama.
+            </p>
+          </template>
+        </div>
     </div>
   </div>
 </template>
@@ -802,14 +855,25 @@ const periodDates = computed(() => {
 // external surveys (the same basis as the Bukti Survei dialog), or 1 for an
 // internal survey; there is no target for an external survey without a period.
 const RANK_SIZE = 20;
+const DIVISION_RANK_SIZE = 5;
+
+// One employee's target over the period (shared by both rankings): external =
+// days so far x per-day limit, null when the survey has no fixed period;
+// internal = 1.
+const perEmployeeTarget = computed(() => {
+  const survey = selectedSurveyFilter.value;
+  if (!survey) return null;
+  const { limit, perDay } = surveyQuota(survey);
+  if (!perDay) return limit;
+  return periodDates.value.length > 0 ? periodDates.value.length * limit : null;
+});
 
 const lowestVoters = computed(() => {
   const empty = { rows: [], tied: 0, cutoff: 0 };
   const survey = selectedSurveyFilter.value;
   if (props.publicMode || !survey) return empty;
 
-  const { limit, perDay } = surveyQuota(survey);
-  const target = perDay ? (periodDates.value.length > 0 ? periodDates.value.length * limit : null) : limit;
+  const target = perEmployeeTarget.value;
 
   const votes = new Map();
   for (const s of filteredSubmissions.value) votes.set(s.nama, (votes.get(s.nama) ?? 0) + 1);
@@ -835,6 +899,42 @@ const lowestVoters = computed(() => {
   const cutoff = rows.at(-1)?.vote ?? 0;
   const tied =
     rows.length === RANK_SIZE ? ranked.slice(RANK_SIZE).filter((r) => r.vote === cutoff).length : 0;
+  return { rows, tied, cutoff };
+});
+
+// ── Divisi dengan vote tersedikit ──────────────────────────────────────────
+// Ranks the divisions by their TOTAL votes over the whole period (not one
+// day), fewest first; equal votes are ordered by name. Vote = submissions whose
+// recorded unit belongs to the division (same basis as the per-Divisi table);
+// target = active employees in the division x one employee's target. Since the
+// ranking is by raw votes, a small division naturally ranks low, so the target
+// and percentage are shown beside the count.
+const lowestDivisions = computed(() => {
+  const empty = { rows: [], tied: 0, cutoff: 0 };
+  if (props.publicMode || !selectedSurveyFilter.value) return empty;
+
+  const perEmployee = perEmployeeTarget.value;
+
+  const ranked = ORG_PARENT_KEYS.map((key) => {
+    const units = new Set(ORG_CHILDREN_BY_PARENT.get(key) ?? []);
+    const pegawai = store.employees.filter((e) => e.isActive && units.has(e.unitKerja)).length;
+    const vote = filteredSubmissions.value.filter((s) => units.has(s.departemen)).length;
+    const target = perEmployee === null ? null : pegawai * perEmployee;
+    return {
+      key,
+      pegawai,
+      vote,
+      target,
+      persen: target ? Math.round((vote / target) * 1000) / 10 : null,
+    };
+  }).sort((a, b) => a.vote - b.vote || a.key.localeCompare(b.key, "id"));
+
+  const rows = ranked.slice(0, DIVISION_RANK_SIZE);
+  const cutoff = rows.at(-1)?.vote ?? 0;
+  const tied =
+    rows.length === DIVISION_RANK_SIZE
+      ? ranked.slice(DIVISION_RANK_SIZE).filter((r) => r.vote === cutoff).length
+      : 0;
   return { rows, tied, cutoff };
 });
 
