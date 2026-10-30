@@ -6,6 +6,10 @@
 // Hanya nama leaf yang disimpan di database; nama grup (key) di bawah ini
 // cuma pengelompokan tampilan, jadi memindahkan leaf antar grup tidak perlu
 // mengubah data.
+// The unit (and report "division") that holds the Stakeholder participants. It
+// must exist in the `departments` table (see migration 032).
+export const STAKEHOLDER_UNIT = "Stakeholders";
+
 export const ORG_STRUCTURE = [
   {
     key: "General Manager",
@@ -69,6 +73,14 @@ export const ORG_STRUCTURE = [
       "Aero Commercial Department Head",
       "Non-Aero Commercial Department Head",
     ],
+  },
+  {
+    key: "Stakeholders",
+    // Not an organisational division: the participants who have no vote limit
+    // (see lib/participation.js). It has no head unit, and its single unit
+    // carries the same name as the group.
+    head: null,
+    children: [STAKEHOLDER_UNIT],
   },
 ];
 

@@ -157,6 +157,12 @@
             </table>
           </div>
 
+          <p v-if="!reportLoading && dateTable.totals.value.pegawaiStakeholder > 0" class="rank-note">
+            Kolom Total sudah termasuk <strong>{{ dateTable.totals.value.pegawaiStakeholder }}</strong>
+            Stakeholder (target minimal 2 vote per hari, persentase 0% / 50% / 100%), sehingga Total
+            lebih besar daripada Organik + TAD.
+          </p>
+
           <div class="pagination">
             <span class="pagination-label">
               Menampilkan
@@ -402,6 +408,15 @@
             </table>
           </div>
 
+          <p
+            v-if="stakeholderVotes && stakeholderVotes.raw > stakeholderVotes.counted"
+            class="rank-note"
+          >
+            Stakeholders: <strong>{{ stakeholderVotes.raw }}</strong> vote masuk,
+            <strong>{{ stakeholderVotes.counted }}</strong> dihitung. Yang dihitung paling banyak 2 per
+            orang per hari, sesuai aturan persentase (0 vote = 0%, 1 = 50%, 2 atau lebih = 100%).
+          </p>
+
           <div class="pagination">
             <span class="pagination-label">
               Menampilkan
@@ -567,10 +582,18 @@ import {
   ORG_CHILDREN_BY_PARENT,
   ORG_HEAD_BY_PARENT,
   ORG_PARENT_KEYS,
+  STAKEHOLDER_UNIT,
   shortDeptName,
 } from "./orgStructure";
 import { formatWibDateTime, wibToday } from "./lib/wib";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
+import {
+  STAKEHOLDER_JENIS,
+  buildRow,
+  capStakeholderVotes,
+  countByJenis,
+  sumRows,
+} from "./lib/participation";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
@@ -691,42 +714,15 @@ function departmentDetailLink(deptName) {
 // participationGroupedBy di surveyStore.js) — supaya total pegawai di
 // tabel "per Tanggal" dan "per Departemen" selalu konsisten.
 function buildDeptRow(key, deptNames) {
-  const maxPengisian = surveyQuota(selectedSurveyFilter.value).limit;
+  const limit = surveyQuota(selectedSurveyFilter.value).limit;
   const deptSet = new Set(deptNames);
 
   const employeesHere = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja));
-  const pegawaiOrganik = employeesHere.filter((e) => e.jenisPegawai === "Organik").length;
-  const pegawaiNonOrganik = employeesHere.length - pegawaiOrganik;
-  const pegawaiTotal = employeesHere.length;
-
-  const targetOrganik = pegawaiOrganik * maxPengisian;
-  const targetNonOrganik = pegawaiNonOrganik * maxPengisian;
-  const targetTotal = targetOrganik + targetNonOrganik;
-
   const scoped = deptSubmissions.value.filter((s) => deptSet.has(s.departemen));
-  const pengisianOrganik = scoped.filter((s) => s.jenisPegawai === "Organik").length;
-  const pengisianNonOrganik = scoped.length - pengisianOrganik;
-  const pengisianTotal = scoped.length;
 
-  return {
-    key,
-    pegawaiOrganik,
-    pegawaiNonOrganik,
-    pegawaiTotal,
-    targetOrganik,
-    targetNonOrganik,
-    targetTotal,
-    pengisianOrganik,
-    pengisianNonOrganik,
-    pengisianTotal,
-    gapOrganik: pengisianOrganik - targetOrganik,
-    gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
-    gapTotal: pengisianTotal - targetTotal,
-    persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
-    persenNonOrganik:
-      targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
-    persenTotal: targetTotal > 0 ? Math.round((pengisianTotal / targetTotal) * 1000) / 10 : 0,
-  };
+  // Stakeholders sit in the same totals as everyone else; their own target and
+  // vote counting rules live in lib/participation.js.
+  return buildRow(key, countByJenis(employeesHere), countByJenis(scoped), limit);
 }
 
 function childrenBreakdown(parentKey) {
@@ -747,38 +743,8 @@ function useRowsTable(rowsRef, { pageSize = 10 } = {}) {
   const pageEnd = computed(() => Math.min(pageStart.value + pageSize, rows.value.length));
   const pagedRows = computed(() => rows.value.slice(pageStart.value, pageEnd.value));
 
-  const totals = computed(() => {
-    const list = rows.value;
-    const sum = (field) => list.reduce((acc, r) => acc + r[field], 0);
-    const pegawaiOrganik = sum("pegawaiOrganik");
-    const pegawaiNonOrganik = sum("pegawaiNonOrganik");
-    const pegawaiTotal = pegawaiOrganik + pegawaiNonOrganik;
-    const targetOrganik = sum("targetOrganik");
-    const targetNonOrganik = sum("targetNonOrganik");
-    const targetTotal = targetOrganik + targetNonOrganik;
-    const pengisianOrganik = sum("pengisianOrganik");
-    const pengisianNonOrganik = sum("pengisianNonOrganik");
-    const pengisianTotal = pengisianOrganik + pengisianNonOrganik;
-
-    return {
-      pegawaiOrganik,
-      pegawaiNonOrganik,
-      pegawaiTotal,
-      targetOrganik,
-      targetNonOrganik,
-      targetTotal,
-      pengisianOrganik,
-      pengisianNonOrganik,
-      pengisianTotal,
-      gapOrganik: pengisianOrganik - targetOrganik,
-      gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
-      gapTotal: pengisianTotal - targetTotal,
-      persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
-      persenNonOrganik:
-        targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
-      persenTotal: targetTotal > 0 ? Math.round((pengisianTotal / targetTotal) * 1000) / 10 : 0,
-    };
-  });
+  // Different groups of people, so headcounts, targets and votes all add up.
+  const totals = computed(() => sumRows(rows.value, "sum"));
 
   return { page, rows, totalPages, pageStart, pageEnd, pagedRows, totals };
 }
@@ -859,8 +825,10 @@ watch(selectedSurveyFilterId, () => {
 const filteredSubmissions = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey) return [];
-  const source = props.publicMode ? publicSubmissions.value : store.submissions;
-  return source.filter((s) => s.surveyId === survey.id);
+  // The public numbers come pre-counted from the database; for the admin view
+  // each stakeholder's votes are capped per day here (lib/participation.js).
+  if (props.publicMode) return publicSubmissions.value.filter((s) => s.surveyId === survey.id);
+  return capStakeholderVotes(store.submissions.filter((s) => s.surveyId === survey.id));
 });
 
 const deptSubmissions = computed(() => {
@@ -868,6 +836,21 @@ const deptSubmissions = computed(() => {
   return selectedTanggal.value
     ? filteredSubmissions.value.filter((s) => s.tanggal === selectedTanggal.value)
     : [];
+});
+
+// Stakeholder votes that came in vs. the ones counted (at most 2 per person per
+// day), for the note under the per-Divisi table. Admin view only.
+const stakeholderVotes = computed(() => {
+  const survey = selectedSurveyFilter.value;
+  if (props.publicMode || !survey) return null;
+  const raw = store.submissions.filter(
+    (s) =>
+      s.surveyId === survey.id &&
+      s.jenisPegawai === STAKEHOLDER_JENIS &&
+      (isInternal.value || (selectedTanggal.value && s.tanggal === selectedTanggal.value))
+  ).length;
+  const counted = deptSubmissions.value.filter((s) => s.jenisPegawai === STAKEHOLDER_JENIS).length;
+  return { raw, counted };
 });
 
 // Every day of the survey's period up to today (or its end), so the per-Tanggal
@@ -920,8 +903,10 @@ const lowestVoters = computed(() => {
   const votes = new Map();
   for (const s of filteredSubmissions.value) votes.set(s.nama, (votes.get(s.nama) ?? 0) + 1);
 
+  // Stakeholders have their own rule (no maximum, minimum 2 a day), so they are
+  // not ranked against employees here.
   const ranked = store.employees
-    .filter((e) => e.isActive)
+    .filter((e) => e.isActive && e.jenisPegawai !== STAKEHOLDER_JENIS)
     .map((e) => {
       const vote = votes.get(e.nama) ?? 0;
       return {
@@ -960,8 +945,11 @@ const lowestDepartments = computed(() => {
   const noTarget = perEmployee === null;
   const heads = new Set(ORG_HEAD_BY_PARENT.values());
 
+  // Neither division heads nor the Stakeholders unit are Department Heads.
   const units = ORG_PARENT_KEYS.flatMap((divisi) =>
-    (ORG_CHILDREN_BY_PARENT.get(divisi) ?? []).filter((unit) => !heads.has(unit)).map((unit) => ({ unit, divisi }))
+    (ORG_CHILDREN_BY_PARENT.get(divisi) ?? [])
+      .filter((unit) => !heads.has(unit) && unit !== STAKEHOLDER_UNIT)
+      .map((unit) => ({ unit, divisi }))
   );
 
   const ranked = units
@@ -1020,40 +1008,9 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
   const pageEnd = computed(() => Math.min(pageStart.value + pageSize, rows.value.length));
   const pagedRows = computed(() => rows.value.slice(pageStart.value, pageEnd.value));
 
-  const totals = computed(() => {
-    const list = rows.value;
-    const first = list[0];
-    const pengisianOrganik = list.reduce((sum, r) => sum + r.pengisianOrganik, 0);
-    const pengisianNonOrganik = list.reduce((sum, r) => sum + r.pengisianNonOrganik, 0);
-    const pengisianTotal = pengisianOrganik + pengisianNonOrganik;
-    const pegawaiOrganik = first?.pegawaiOrganik ?? 0;
-    const pegawaiNonOrganik = first?.pegawaiNonOrganik ?? 0;
-    const pegawaiTotal = first?.pegawaiTotal ?? 0;
-    // Each row is one day with its own per-day target, so the accumulated
-    // target is the sum across days.
-    const targetOrganik = list.reduce((sum, r) => sum + r.targetOrganik, 0);
-    const targetNonOrganik = list.reduce((sum, r) => sum + r.targetNonOrganik, 0);
-    const targetTotal = targetOrganik + targetNonOrganik;
-
-    return {
-      pegawaiOrganik,
-      pegawaiNonOrganik,
-      pegawaiTotal,
-      targetOrganik,
-      targetNonOrganik,
-      targetTotal,
-      pengisianOrganik,
-      pengisianNonOrganik,
-      pengisianTotal,
-      gapOrganik: pengisianOrganik - targetOrganik,
-      gapNonOrganik: pengisianNonOrganik - targetNonOrganik,
-      gapTotal: pengisianTotal - targetTotal,
-      persenOrganik: targetOrganik > 0 ? Math.round((pengisianOrganik / targetOrganik) * 1000) / 10 : 0,
-      persenNonOrganik:
-        targetNonOrganik > 0 ? Math.round((pengisianNonOrganik / targetNonOrganik) * 1000) / 10 : 0,
-      persenTotal: targetTotal > 0 ? Math.round((pengisianTotal / targetTotal) * 1000) / 10 : 0,
-    };
-  });
+  // Every row is the same people on a different day: the headcount is taken
+  // once, while each day's own target and votes add up across the days.
+  const totals = computed(() => sumRows(rows.value, "first"));
 
   return { page, rows, totalPages, pageStart, pageEnd, pagedRows, totals };
 }

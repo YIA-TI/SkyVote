@@ -65,7 +65,7 @@
                 <span class="status-flag">
                   <span
                     class="status-dot"
-                    :class="employee.jenisPegawai === 'Organik' ? 'status-aktif' : 'status-terjadwal'"
+                    :class="jenisDotClass(employee.jenisPegawai)"
                   />
                   {{ jenisPegawaiLabel(employee.jenisPegawai) }}
                 </span>
@@ -195,7 +195,13 @@
 
               <div class="field">
                 <label class="field-label" for="karyawan-unit">Unit Kerja <span class="required">*</span></label>
-                <select id="karyawan-unit" v-model="form.unitKerja" class="input input-select" required>
+                <select
+                  id="karyawan-unit"
+                  v-model="form.unitKerja"
+                  class="input input-select"
+                  required
+                  :disabled="isStakeholderForm"
+                >
                   <option value="" disabled>Pilih unit kerja</option>
                   <option v-for="unit in unitOptions" :key="unit" :value="unit">{{ shortDeptName(unit) }}</option>
                 </select>
@@ -211,7 +217,13 @@
                 <select id="karyawan-jenis" v-model="form.jenisPegawai" class="input input-select" required>
                   <option value="Organik">Organik</option>
                   <option value="Non-Organik">TAD (Non-Organik)</option>
+                  <option value="Stakeholder">Stakeholder</option>
                 </select>
+                <p v-if="isStakeholderForm" class="field-helper">
+                  Stakeholder tidak dibatasi jumlah vote, dengan minimal {{ STAKEHOLDER_MIN_VOTES }} vote
+                  per hari. Unitnya otomatis "{{ STAKEHOLDER_UNIT }}" dan tampil sebagai divisi tersendiri
+                  di laporan.
+                </p>
                 <p v-if="jenisChanged" class="field-warning" role="status">
                   Isian survei sebelumnya tetap tercatat sebagai jenis pegawai yang lama; hanya isian
                   baru yang memakai jenis ini.
@@ -248,7 +260,8 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { pageItems } from "./lib/pagination";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
-import { ORG_STRUCTURE, shortDeptName } from "./orgStructure.js";
+import { STAKEHOLDER_JENIS, STAKEHOLDER_MIN_VOTES } from "./lib/participation";
+import { ORG_STRUCTURE, STAKEHOLDER_UNIT, shortDeptName } from "./orgStructure.js";
 import { jenisPegawaiLabel, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
 
@@ -295,6 +308,29 @@ const editingId = ref(null);
 const saving = ref(false);
 const form = reactive({ nip: "", nama: "", unitKerja: "", jenisPegawai: "Organik" });
 
+// A stakeholder always sits in the "Stakeholders" unit (the reports and the
+// database both rely on that), so the two fields are kept in step: choosing the
+// Stakeholder type locks the unit, and choosing that unit sets the type.
+const isStakeholderForm = computed(() => form.jenisPegawai === STAKEHOLDER_JENIS);
+
+watch(
+  () => form.jenisPegawai,
+  (jenis, previous) => {
+    if (jenis === STAKEHOLDER_JENIS) {
+      form.unitKerja = STAKEHOLDER_UNIT;
+    } else if (previous === STAKEHOLDER_JENIS && form.unitKerja === STAKEHOLDER_UNIT) {
+      form.unitKerja = ""; // no longer a stakeholder: a real unit has to be chosen
+    }
+  }
+);
+
+watch(
+  () => form.unitKerja,
+  (unit) => {
+    if (unit === STAKEHOLDER_UNIT) form.jenisPegawai = STAKEHOLDER_JENIS;
+  }
+);
+
 // Values as they were when the edit form was opened, to warn about changes
 // that don't carry over to survey results already submitted: each submission
 // keeps its own copy of unit and jenis, and is matched to the employee by nama.
@@ -308,6 +344,12 @@ const unitChanged = computed(
 const jenisChanged = computed(
   () => !!editingId.value && form.jenisPegawai !== original.jenisPegawai
 );
+
+function jenisDotClass(jenis) {
+  if (jenis === "Organik") return "status-aktif";
+  if (jenis === STAKEHOLDER_JENIS) return "status-stakeholder";
+  return "status-terjadwal";
+}
 
 function resetForm() {
   form.nip = "";
@@ -578,6 +620,17 @@ async function reactivate(employee) {
 
 .status-terjadwal {
   background-color: var(--color-warning);
+}
+
+.status-stakeholder {
+  background-color: var(--color-primary);
+}
+
+.field-helper {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 .row-actions {

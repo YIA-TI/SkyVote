@@ -157,6 +157,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
+import { buildRow, capStakeholderVotes, countByJenis } from "./lib/participation";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 
@@ -213,15 +214,25 @@ watch(selectedSurveyId, () => {
 
 const maxPengisian = computed(() => surveyQuota(selectedSurvey.value).limit);
 
+// A stakeholder's votes are capped at 2 per person per day (lib/participation.js)
+// so that, with their target of 2, the figures follow the 0 / 50 / 100% rule.
 const filteredSubmissions = computed(() => {
   const survey = selectedSurvey.value;
   if (!survey) return [];
-  if (isInternal.value) return store.submissions.filter((s) => s.surveyId === survey.id);
+  const forSurvey = store.submissions.filter((s) => s.surveyId === survey.id);
+  if (isInternal.value) return capStakeholderVotes(forSurvey);
   if (!selectedTanggal.value) return [];
-  return store.submissions.filter(
-    (s) => s.surveyId === survey.id && s.tanggal === selectedTanggal.value
-  );
+  return capStakeholderVotes(forSurvey.filter((s) => s.tanggal === selectedTanggal.value));
 });
+
+// Target and voting for a group of units; stakeholders count towards both with
+// their own target rule, like everyone else's.
+function unitFigures(key, unitSet) {
+  const employees = store.employees.filter((e) => e.isActive && unitSet.has(e.unitKerja));
+  const submissions = filteredSubmissions.value.filter((s) => unitSet.has(s.departemen));
+  const row = buildRow(key, countByJenis(employees), countByJenis(submissions), maxPengisian.value);
+  return { target: row.targetTotal, voting: row.pengisianTotal };
+}
 
 const shortLabels = {
   "General Manager": "GM",
@@ -234,10 +245,7 @@ const shortLabels = {
 
 const divisionRows = computed(() =>
   ORG_PARENT_KEYS.map((key) => {
-    const deptSet = new Set(ORG_CHILDREN_BY_PARENT.get(key) ?? []);
-    const employeeCount = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja)).length;
-    const target = employeeCount * maxPengisian.value;
-    const voting = filteredSubmissions.value.filter((s) => deptSet.has(s.departemen)).length;
+    const { target, voting } = unitFigures(key, new Set(ORG_CHILDREN_BY_PARENT.get(key) ?? []));
     return { key, shortLabel: shortLabels[key] ?? key, target, voting };
   })
 );
@@ -263,9 +271,7 @@ const gridlines = [0, 25, 50, 75, 100];
 
 const departmentRows = computed(() =>
   ORG_PARENT_KEYS.flatMap((parentKey) => ORG_CHILDREN_BY_PARENT.get(parentKey) ?? []).map((dept) => {
-    const employeeCount = store.employees.filter((e) => e.isActive && e.unitKerja === dept).length;
-    const target = employeeCount * maxPengisian.value;
-    const voting = filteredSubmissions.value.filter((s) => s.departemen === dept).length;
+    const { target, voting } = unitFigures(dept, new Set([dept]));
     return { key: dept, shortLabel: shortDeptName(dept), target, voting };
   })
 );

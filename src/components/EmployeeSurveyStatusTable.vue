@@ -59,7 +59,7 @@
               </td>
               <td>
                 <span class="fill-badge" :class="fillBadgeClass(employee)">
-                  {{ fillCountFor(employee) }}/{{ quota.limit }}
+                  {{ countLabel(employee) }}
                 </span>
               </td>
               <td class="col-sisa-kuota">
@@ -161,8 +161,8 @@
                     <td class="col-no">{{ index + 1 }}</td>
                     <td>{{ row.tanggal }}</td>
                     <td>
-                      <span class="fill-badge" :class="row.dayCount >= quota.limit ? 'fill-full' : 'fill-partial'">
-                        Mengisi{{ quota.perDay ? ` ${row.dayCount}/${quota.limit}` : "" }}
+                      <span class="fill-badge" :class="row.dayCount >= detailTarget ? 'fill-full' : 'fill-partial'">
+                        {{ dayBadgeLabel(row) }}
                       </span>
                     </td>
                     <td>{{ submissionTime(row.submission) || "-" }}</td>
@@ -216,7 +216,8 @@ import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import { pageItems } from "../lib/pagination";
 import { formatWibTime, wibToday } from "../lib/wib";
 import { shortDeptName } from "../orgStructure";
-import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "../stores/surveyStore";
+import { STAKEHOLDER_MIN_VOTES, capStakeholderVotes, isStakeholder } from "../lib/participation";
+import { dayTarget, jenisPegawaiLabel, surveyQuota, useSurveyStore } from "../stores/surveyStore";
 
 const props = defineProps({
   employees: {
@@ -252,20 +253,35 @@ function fillCountFor(employee) {
   return store.submissionCountForEmployeeSurvey(props.surveyId, employee.nama, props.tanggal);
 }
 
+// What counts as "done" for this person: the survey's limit for Organik/TAD,
+// the daily minimum (2) for a stakeholder, who has no maximum at all.
+function targetFor(employee) {
+  return dayTarget(survey.value, employee);
+}
+
+// "3/2" for a normal limit; "5 (min 2)" for a stakeholder, where more than the
+// minimum is fine rather than "over quota".
+function countLabel(employee) {
+  const count = fillCountFor(employee);
+  return isStakeholder(employee)
+    ? `${count} (min ${STAKEHOLDER_MIN_VOTES})`
+    : `${count}/${targetFor(employee)}`;
+}
+
 function fillBadgeClass(employee) {
   const count = fillCountFor(employee);
   if (count === 0) return "fill-empty";
-  if (survey.value && count >= quota.value.limit) return "fill-full";
+  if (survey.value && count >= targetFor(employee)) return "fill-full";
   return "fill-partial";
 }
 
 function remainingQuotaFor(employee) {
   if (!survey.value) return 0;
-  return Math.max(0, quota.value.limit - fillCountFor(employee));
+  return Math.max(0, targetFor(employee) - fillCountFor(employee));
 }
 
 function isCompleted(employee) {
-  return survey.value ? fillCountFor(employee) >= quota.value.limit : false;
+  return survey.value ? fillCountFor(employee) >= targetFor(employee) : false;
 }
 
 function submissionTime(submission) {
@@ -346,12 +362,27 @@ const detailRows = computed(() => {
 // "Jumlah vote X dari target Y (periode)". Vote = all the employee's
 // submissions to this survey; target = days in the listed range x the per-day
 // limit (e.g. 11 days x 2 = 22), the same range the day-by-day table shows.
+// A stakeholder's votes count at most STAKEHOLDER_MIN_VOTES per day (the cap the
+// report applies), against a target of that many per day.
+const detailTarget = computed(() => dayTarget(survey.value, detailEmployee.value));
+
 const detailSummary = computed(() => {
   if (!quota.value.perDay || detailDates.value.length === 0) return "";
-  const vote = detailSubmissions.value.length;
-  const target = detailDates.value.length * quota.value.limit;
+  const vote = isStakeholder(detailEmployee.value)
+    ? capStakeholderVotes(detailSubmissions.value).length
+    : detailSubmissions.value.length;
+  const target = detailDates.value.length * detailTarget.value;
   return `Jumlah vote ${vote} dari target ${target} (${detailDates.value[0]} s.d. ${detailDates.value.at(-1)})`;
 });
+
+// Per-day badge text in the detail table: "Mengisi 2/2", or "Mengisi 5 (min 2)"
+// for a stakeholder.
+function dayBadgeLabel(row) {
+  if (!quota.value.perDay) return "Mengisi";
+  return isStakeholder(detailEmployee.value)
+    ? `Mengisi ${row.dayCount} (min ${STAKEHOLDER_MIN_VOTES})`
+    : `Mengisi ${row.dayCount}/${detailTarget.value}`;
+}
 
 function openDetail(employee) {
   if (!props.surveyId) return;
