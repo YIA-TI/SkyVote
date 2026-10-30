@@ -220,9 +220,9 @@
                   <option value="Stakeholder">Stakeholder</option>
                 </select>
                 <p v-if="isStakeholderForm" class="field-helper">
-                  Stakeholder tidak dibatasi jumlah vote, dengan minimal {{ STAKEHOLDER_MIN_VOTES }} vote
-                  per hari. Unitnya otomatis "{{ STAKEHOLDER_UNIT }}" dan tampil sebagai divisi tersendiri
-                  di laporan.
+                  Target Stakeholder {{ STAKEHOLDER_DAILY_TARGET }} vote per hari (itu juga batas
+                  maksimalnya per hari), dihitung mulai hari ia didaftarkan. Unitnya otomatis
+                  "{{ STAKEHOLDER_UNIT }}" dan tampil sebagai divisi tersendiri di laporan.
                 </p>
                 <p v-if="jenisChanged" class="field-warning" role="status">
                   Isian survei sebelumnya tetap tercatat sebagai jenis pegawai yang lama; hanya isian
@@ -260,7 +260,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { pageItems } from "./lib/pagination";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
-import { STAKEHOLDER_JENIS, STAKEHOLDER_MIN_VOTES } from "./lib/participation";
+import { STAKEHOLDER_DAILY_TARGET, STAKEHOLDER_JENIS } from "./lib/participation";
 import { ORG_STRUCTURE, STAKEHOLDER_UNIT, shortDeptName } from "./orgStructure.js";
 import { jenisPegawaiLabel, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";

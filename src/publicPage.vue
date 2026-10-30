@@ -143,12 +143,8 @@
               </p>
             </div>
             <p v-if="selectedEmployee && selectedSurvey" class="name-quota-info" :class="quotaBadgeClass">
-              <template v-if="quota.unlimited">
-                Anda terdaftar sebagai Stakeholder: tidak ada batas maksimal pengisian, minimal
-                {{ quota.minimum }} per hari. Anda sudah mengisi {{ employeeSubmissionCount }} kali pada
-                tanggal ini
-              </template>
-              <template v-else-if="quota.perDay">
+              <template v-if="quota.perDay">
+                <template v-if="quota.stakeholder">Stakeholder: </template>
                 Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ quota.limit }}
                 pada tanggal ini
               </template>
@@ -463,7 +459,7 @@ watch(
 
 // External surveys: maxPengisian per day (counted for the date above).
 // Internal surveys: once for the whole period (every date counts).
-// Stakeholders (external surveys): no maximum, only an expected minimum a day.
+// Stakeholders (external surveys): a fixed 100 a day, which is also their maximum.
 const quota = computed(() => surveyQuota(selectedSurvey.value, selectedEmployee.value));
 
 // The local cache only has data in an admin session, so take whichever is higher.
@@ -478,8 +474,7 @@ const employeeSubmissionCount = computed(() => {
 });
 
 const quotaFull = computed(() => {
-  const { limit, perDay, unlimited } = quota.value;
-  if (unlimited) return false; // a stakeholder is never locked out
+  const { limit, perDay } = quota.value;
   if (!selectedSurvey.value || !limit || !selectedEmployee.value) return false;
   if (perDay && !form.tanggal) return false;
   return employeeSubmissionCount.value >= limit;
@@ -487,10 +482,6 @@ const quotaFull = computed(() => {
 
 const quotaBadgeClass = computed(() => {
   if (!selectedSurvey.value || !selectedEmployee.value) return "";
-  // Stakeholders: green once the daily minimum is reached, amber until then.
-  if (quota.value.unlimited) {
-    return employeeSubmissionCount.value >= quota.value.minimum ? "quota-ok" : "quota-warning";
-  }
   const ratio = employeeSubmissionCount.value / quota.value.limit;
   if (ratio >= 1) return "quota-full";
   if (ratio >= 0.8) return "quota-warning";

@@ -4,21 +4,27 @@
 // Three kinds of participant:
 //   - Organik and TAD (Non-Organik): bound by the survey's per-day limit, so
 //     their target is `limit` votes per person per day.
-//   - Stakeholder: no maximum, but a minimum of STAKEHOLDER_MIN_VOTES per day.
-//     Their target is that minimum, and at most that many votes per person per
-//     day are COUNTED (0 votes -> 0%, 1 -> 50%, 2 or more -> 100%). Because
-//     counted votes are capped, votes / target gives that percentage directly,
-//     and extra stakeholder votes cannot hide a shortfall elsewhere in the
-//     totals. (The database applies the same cap in public_report_counts.)
+//   - Stakeholder ("buzzer"): a fixed target of STAKEHOLDER_DAILY_TARGET votes
+//     per person per day, which is also their daily maximum (the database
+//     refuses a 101st submission in a day). The percentage is plain
+//     votes / target. A stakeholder only counts from the day they were
+//     registered (see employeesOn), so adding one never lowers the figures of
+//     earlier days.
 
 export const STAKEHOLDER_JENIS = "Stakeholder";
-export const STAKEHOLDER_MIN_VOTES = 2;
+
+// Votes expected from one stakeholder per day. Keep it equal to the safety
+// ceiling c_stakeholder_daily_ceiling in the database (migration 032), and to
+// the cap in public_report_counts (migration 033).
+export const STAKEHOLDER_DAILY_TARGET = 100;
 
 export const isStakeholder = (participant) => participant?.jenisPegawai === STAKEHOLDER_JENIS;
 
-// Keeps at most STAKEHOLDER_MIN_VOTES submissions per stakeholder per day;
-// everyone else's submissions pass through untouched. Needs `nama` on each
-// submission, so it is for full submission rows (not already-capped aggregates).
+// Keeps at most STAKEHOLDER_DAILY_TARGET submissions per stakeholder per day;
+// everyone else's submissions pass through untouched. The database already
+// refuses more than that, so this only matters if the ceiling is ever raised.
+// Needs `nama` on each submission, so it is for full submission rows (not
+// already-capped aggregates).
 export function capStakeholderVotes(submissions) {
   const perPersonDay = new Map();
   return submissions.filter((submission) => {
@@ -26,8 +32,19 @@ export function capStakeholderVotes(submissions) {
     const key = `${submission.nama}|${submission.tanggal}`;
     const count = (perPersonDay.get(key) ?? 0) + 1;
     perPersonDay.set(key, count);
-    return count <= STAKEHOLDER_MIN_VOTES;
+    return count <= STAKEHOLDER_DAILY_TARGET;
   });
+}
+
+// The participants who count on a given day (YYYY-MM-DD): everyone, except
+// stakeholders registered AFTER that day. `registeredOn` is the WIB date the
+// employee record was created; a missing value counts as "always there".
+// Without a day (internal surveys, which have none) nobody is filtered out.
+export function employeesOn(employees, tanggal) {
+  if (!tanggal) return employees;
+  return employees.filter(
+    (employee) => !isStakeholder(employee) || !employee.registeredOn || employee.registeredOn <= tanggal
+  );
 }
 
 // { organik, nonOrganik, stakeholder } counts of a list of employees or
@@ -79,7 +96,7 @@ export function buildRow(key, pegawai, pengisian, limit) {
     pegawaiStakeholder: pegawai.stakeholder,
     targetOrganik: pegawai.organik * limit,
     targetNonOrganik: pegawai.nonOrganik * limit,
-    targetStakeholder: pegawai.stakeholder * STAKEHOLDER_MIN_VOTES,
+    targetStakeholder: pegawai.stakeholder * STAKEHOLDER_DAILY_TARGET,
     pengisianOrganik: pengisian.organik,
     pengisianNonOrganik: pengisian.nonOrganik,
     pengisianStakeholder: pengisian.stakeholder,
@@ -89,7 +106,8 @@ export function buildRow(key, pegawai, pengisian, limit) {
 // The total line of a table made of rows. `pegawaiMode` is "sum" when the rows
 // are different groups of people (divisions), and "first" when every row covers
 // the same people on a different day (the per-Tanggal table), so the headcount
-// is taken once while targets and votes add up across the rows.
+// is taken once (from the first row, the most recent day) while targets and
+// votes add up across the rows.
 export function sumRows(rows, pegawaiMode = "sum") {
   const sum = (field) => rows.reduce((total, row) => total + row[field], 0);
   const headcount = (field) => (pegawaiMode === "first" ? rows[0]?.[field] ?? 0 : sum(field));

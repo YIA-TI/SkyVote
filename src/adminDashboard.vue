@@ -157,7 +157,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
-import { buildRow, capStakeholderVotes, countByJenis } from "./lib/participation";
+import { buildRow, capStakeholderVotes, countByJenis, employeesOn } from "./lib/participation";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 
@@ -228,7 +228,12 @@ const filteredSubmissions = computed(() => {
 // Target and voting for a group of units; stakeholders count towards both with
 // their own target rule, like everyone else's.
 function unitFigures(key, unitSet) {
-  const employees = store.employees.filter((e) => e.isActive && unitSet.has(e.unitKerja));
+  // For the chosen day, a stakeholder registered after it is not counted yet; an
+  // internal survey has no day, so everyone counts.
+  const employees = employeesOn(
+    store.employees.filter((e) => e.isActive && unitSet.has(e.unitKerja)),
+    isInternal.value ? "" : selectedTanggal.value
+  );
   const submissions = filteredSubmissions.value.filter((s) => unitSet.has(s.departemen));
   const row = buildRow(key, countByJenis(employees), countByJenis(submissions), maxPengisian.value);
   return { target: row.targetTotal, voting: row.pengisianTotal };

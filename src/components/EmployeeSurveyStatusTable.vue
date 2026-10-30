@@ -216,7 +216,7 @@ import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import { pageItems } from "../lib/pagination";
 import { formatWibTime, wibToday } from "../lib/wib";
 import { shortDeptName } from "../orgStructure";
-import { STAKEHOLDER_MIN_VOTES, capStakeholderVotes, isStakeholder } from "../lib/participation";
+import { capStakeholderVotes, isStakeholder } from "../lib/participation";
 import { dayTarget, jenisPegawaiLabel, surveyQuota, useSurveyStore } from "../stores/surveyStore";
 
 const props = defineProps({
@@ -254,18 +254,13 @@ function fillCountFor(employee) {
 }
 
 // What counts as "done" for this person: the survey's limit for Organik/TAD,
-// the daily minimum (2) for a stakeholder, who has no maximum at all.
+// the stakeholder daily target (100) for a stakeholder.
 function targetFor(employee) {
   return dayTarget(survey.value, employee);
 }
 
-// "3/2" for a normal limit; "5 (min 2)" for a stakeholder, where more than the
-// minimum is fine rather than "over quota".
 function countLabel(employee) {
-  const count = fillCountFor(employee);
-  return isStakeholder(employee)
-    ? `${count} (min ${STAKEHOLDER_MIN_VOTES})`
-    : `${count}/${targetFor(employee)}`;
+  return `${fillCountFor(employee)}/${targetFor(employee)}`;
 }
 
 function fillBadgeClass(employee) {
@@ -320,8 +315,11 @@ function datesBetween(start, end) {
 // The days the employee was expected to fill: from the start of the survey
 // period up to today (or the end of the period, if it is already over).
 const detailDates = computed(() => {
-  const start = survey.value?.tanggalMulai || detailSubmissions.value[0]?.tanggal;
+  let start = survey.value?.tanggalMulai || detailSubmissions.value[0]?.tanggal;
   if (!start) return [];
+  // A stakeholder was only expected to vote from the day they were registered.
+  const registeredOn = detailEmployee.value?.registeredOn;
+  if (isStakeholder(detailEmployee.value) && registeredOn && registeredOn > start) start = registeredOn;
   const today = wibToday();
   const end = survey.value?.tanggalSelesai && survey.value.tanggalSelesai < today ? survey.value.tanggalSelesai : today;
   return datesBetween(start, end);
@@ -362,8 +360,9 @@ const detailRows = computed(() => {
 // "Jumlah vote X dari target Y (periode)". Vote = all the employee's
 // submissions to this survey; target = days in the listed range x the per-day
 // limit (e.g. 11 days x 2 = 22), the same range the day-by-day table shows.
-// A stakeholder's votes count at most STAKEHOLDER_MIN_VOTES per day (the cap the
-// report applies), against a target of that many per day.
+// The per-day target for this person: the survey's limit, or the stakeholder
+// daily target (100). A stakeholder's votes are capped at that many per day, the
+// same cap the report applies.
 const detailTarget = computed(() => dayTarget(survey.value, detailEmployee.value));
 
 const detailSummary = computed(() => {

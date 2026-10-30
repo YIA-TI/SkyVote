@@ -2,13 +2,14 @@ import { defineStore } from "pinia";
 import { compressImage } from "../lib/imageCompress";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import {
+  STAKEHOLDER_DAILY_TARGET,
   STAKEHOLDER_JENIS,
-  STAKEHOLDER_MIN_VOTES,
   buildRow,
   capStakeholderVotes,
   countByJenis,
+  employeesOn,
 } from "../lib/participation";
-import { wibToday } from "../lib/wib";
+import { wibDateOf, wibToday } from "../lib/wib";
 
 // Display-only relabeling: "Non-Organik" pegawai are shown as "TAD" in the
 // UI, but the underlying data/enum value stays "Non-Organik" everywhere
@@ -100,23 +101,22 @@ function toSurveyRow({
 //   - External: `maxPengisian` submissions per employee PER DAY.
 // `perDay` says whether counts should be taken for a single date or across
 // every date. (The database enforces the same rule in enforce_submission_quota.)
-//   - Stakeholder participants (external surveys): no maximum at all
-//     (`unlimited`), with an expected minimum of STAKEHOLDER_MIN_VOTES a day.
-//     Pass the participant as the second argument to get this; without it the
-//     survey's own rule is returned.
+//   - Stakeholder participants (external surveys): STAKEHOLDER_DAILY_TARGET per
+//     day, which is both their target and their daily maximum. Pass the
+//     participant as the second argument to get this; without it the survey's
+//     own rule is returned.
 export function surveyQuota(survey, participant) {
-  if (survey?.tipe === "Internal") return { limit: 1, perDay: false, unlimited: false };
+  if (survey?.tipe === "Internal") return { limit: 1, perDay: false };
   if (participant?.jenisPegawai === STAKEHOLDER_JENIS) {
-    return { limit: null, minimum: STAKEHOLDER_MIN_VOTES, perDay: true, unlimited: true };
+    return { limit: STAKEHOLDER_DAILY_TARGET, perDay: true, stakeholder: true };
   }
-  return { limit: survey?.maxPengisian ?? 1, perDay: true, unlimited: false };
+  return { limit: survey?.maxPengisian ?? 1, perDay: true };
 }
 
 // What counts as "done" for one participant on one day (or for the period, for
-// an internal survey): the limit for Organik/TAD, the minimum for a stakeholder.
+// an internal survey).
 export function dayTarget(survey, participant) {
-  const quota = surveyQuota(survey, participant);
-  return quota.unlimited ? quota.minimum : quota.limit;
+  return surveyQuota(survey, participant).limit;
 }
 
 function mapQuestion(row) {
@@ -155,6 +155,9 @@ function mapEmployee(row) {
     unitKerja: row.unit_kerja,
     jenisPegawai: row.jenis_pegawai,
     isActive: row.is_active ?? true,
+    // The WIB day the record was created. A stakeholder's target only counts
+    // from this day on (see employeesOn in lib/participation.js).
+    registeredOn: wibDateOf(row.created_at),
   };
 }
 
@@ -245,8 +248,8 @@ export const useSurveyStore = defineStore("survey", {
         if (!survey || !nama) return false;
         // A stakeholder is never "full": there is no maximum.
         const participant = this.employees.find((e) => e.nama === nama);
-        const { limit, perDay, unlimited } = surveyQuota(survey, participant);
-        if (unlimited || !limit || (perDay && !tanggal)) return false;
+        const { limit, perDay } = surveyQuota(survey, participant);
+        if (!limit || (perDay && !tanggal)) return false;
         return this.submissionCountForEmployeeSurvey(surveyId, nama, tanggal) >= limit;
       };
     },
@@ -284,11 +287,15 @@ export const useSurveyStore = defineStore("survey", {
     unreadNotificationCount: (state) => state.notifications.filter((n) => !n.read).length,
 
     participationGroupedBy(state) {
-      return (getKey, submissionsList, allKeys, maxPengisian = 1) => {
+      // `dateKeys`: the keys are days (YYYY-MM-DD), so each row's headcount is
+      // the people who counted on THAT day (a stakeholder only from the day
+      // they were registered). Otherwise every row shares one headcount.
+      return (getKey, submissionsList, allKeys, maxPengisian = 1, dateKeys = false) => {
         // `submissionsList` should already have stakeholder votes capped (see
-        // capStakeholderVotes); every row covers the same headcount.
+        // capStakeholderVotes).
         const list = submissionsList ?? capStakeholderVotes(state.submissions);
-        const pegawai = countByJenis(state.employees.filter((e) => e.isActive));
+        const active = state.employees.filter((e) => e.isActive);
+        const sharedPegawai = countByJenis(active);
 
         const grouped = new Map();
         if (allKeys) {
@@ -302,7 +309,12 @@ export const useSurveyStore = defineStore("survey", {
 
         // Gap = voting - target: negative (red) while the target isn't met.
         return Array.from(grouped.entries()).map(([key, submissions]) =>
-          buildRow(key, pegawai, countByJenis(submissions), maxPengisian)
+          buildRow(
+            key,
+            dateKeys ? countByJenis(employeesOn(active, key)) : sharedPegawai,
+            countByJenis(submissions),
+            maxPengisian
+          )
         );
       };
     },

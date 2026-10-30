@@ -30,6 +30,12 @@ export function wibToday() {
   return dateFormatter.format(new Date());
 }
 
+// The WIB calendar date (YYYY-MM-DD) of a timestamp, e.g. the day a record was
+// created; empty string when there is no value.
+export function wibDateOf(value) {
+  return value ? dateFormatter.format(new Date(value)) : "";
+}
+
 // "14:04:58" in WIB; empty string when there is no value.
 export function formatWibTime(value) {
   return value ? timeFormatter.format(new Date(value)) : "";

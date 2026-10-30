@@ -159,8 +159,8 @@
 
           <p v-if="!reportLoading && dateTable.totals.value.pegawaiStakeholder > 0" class="rank-note">
             Kolom Total sudah termasuk <strong>{{ dateTable.totals.value.pegawaiStakeholder }}</strong>
-            Stakeholder (target minimal 2 vote per hari, persentase 0% / 50% / 100%), sehingga Total
-            lebih besar daripada Organik + TAD.
+            Stakeholder (target {{ STAKEHOLDER_DAILY_TARGET }} vote per orang per hari, dihitung mulai
+            hari didaftarkan), sehingga Total lebih besar daripada Organik + TAD.
           </p>
 
           <div class="pagination">
@@ -413,8 +413,8 @@
             class="rank-note"
           >
             Stakeholders: <strong>{{ stakeholderVotes.raw }}</strong> vote masuk,
-            <strong>{{ stakeholderVotes.counted }}</strong> dihitung. Yang dihitung paling banyak 2 per
-            orang per hari, sesuai aturan persentase (0 vote = 0%, 1 = 50%, 2 atau lebih = 100%).
+            <strong>{{ stakeholderVotes.counted }}</strong> dihitung. Yang dihitung paling banyak
+            {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari, sama dengan targetnya.
           </p>
 
           <div class="pagination">
@@ -588,10 +588,12 @@ import {
 import { formatWibDateTime, wibToday } from "./lib/wib";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
 import {
+  STAKEHOLDER_DAILY_TARGET,
   STAKEHOLDER_JENIS,
   buildRow,
   capStakeholderVotes,
   countByJenis,
+  employeesOn,
   sumRows,
 } from "./lib/participation";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
@@ -717,7 +719,12 @@ function buildDeptRow(key, deptNames) {
   const limit = surveyQuota(selectedSurveyFilter.value).limit;
   const deptSet = new Set(deptNames);
 
-  const employeesHere = store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja));
+  // For a chosen day, a stakeholder registered after that day is not counted
+  // yet (employeesOn); an internal survey has no day, so everyone counts.
+  const employeesHere = employeesOn(
+    store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja)),
+    isInternal.value ? "" : selectedTanggal.value
+  );
   const scoped = deptSubmissions.value.filter((s) => deptSet.has(s.departemen));
 
   // Stakeholders sit in the same totals as everyone else; their own target and
@@ -984,7 +991,7 @@ const lowestDepartments = computed(() => {
   return { rows, tied, cutoffLabel, noTarget };
 });
 
-function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
+function useParticipationTable(getKey, { pageSize = 3, sort, allKeys, dateKeys = false } = {}) {
   const page = ref(1);
 
   const rows = computed(() => {
@@ -993,7 +1000,8 @@ function useParticipationTable(getKey, { pageSize = 3, sort, allKeys } = {}) {
       getKey,
       filteredSubmissions.value,
       allKeys?.value ?? allKeys,
-      maxPengisian
+      maxPengisian,
+      dateKeys
     );
     return sort ? [...list].sort(sort) : list;
   });
@@ -1019,6 +1027,8 @@ const dateTable = useParticipationTable((s) => s.tanggal, {
   pageSize: 6,
   sort: (a, b) => (a.key < b.key ? 1 : -1),
   allKeys: periodDates,
+  // Each row is a day, so each day uses the people who counted on that day.
+  dateKeys: true,
 });
 const deptRows = computed(() =>
   noFilterSelected.value
