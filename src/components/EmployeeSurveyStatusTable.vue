@@ -375,13 +375,13 @@ const detailSummary = computed(() => {
   return `Jumlah vote ${vote} dari target ${target} (${detailDates.value[0]} s.d. ${detailDates.value.at(-1)})`;
 });
 
-// Per-day badge text in the detail table: "Mengisi 2/2", or "Mengisi 5 (min 2)"
-// for a stakeholder.
+// Per-day badge text in the detail table: "Mengisi 2/2" for a normal limit. A
+// stakeholder has no maximum, and every submission is its own row (a day with 32
+// of them would otherwise read "Mengisi 32" on all 32 rows), so it is just
+// "Mengisi". The badge colour still shows whether the day reached the minimum.
 function dayBadgeLabel(row) {
-  if (!quota.value.perDay) return "Mengisi";
-  return isStakeholder(detailEmployee.value)
-    ? `Mengisi ${row.dayCount} (min ${STAKEHOLDER_MIN_VOTES})`
-    : `Mengisi ${row.dayCount}/${detailTarget.value}`;
+  if (!quota.value.perDay || isStakeholder(detailEmployee.value)) return "Mengisi";
+  return `Mengisi ${row.dayCount}/${detailTarget.value}`;
 }
 
 function openDetail(employee) {
