@@ -412,12 +412,16 @@ export const useSurveyStore = defineStore("survey", {
       );
       const rows = [];
       for (const row of data) {
-        for (let i = 0; i < row.jumlah; i++) {
+        const masuk = row.jumlah_asli ?? row.jumlah;
+        for (let i = 0; i < masuk; i++) {
           rows.push({
             surveyId,
             tanggal: row.tanggal,
             departemen: row.departemen,
             jenisPegawai: row.jenis_pegawai,
+            // Past `jumlah` = stakeholder votes over the daily cap: shown as
+            // Voting, left out of Gap and Percentage.
+            ...(i >= row.jumlah ? { uncounted: true } : {}),
           });
         }
       }

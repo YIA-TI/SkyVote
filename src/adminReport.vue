@@ -412,10 +412,10 @@
             v-if="stakeholderVotes && stakeholderVotes.raw > stakeholderVotes.counted"
             class="rank-note"
           >
-            Stakeholders: <strong>{{ stakeholderVotes.raw }}</strong> vote masuk,
-            <strong>{{ stakeholderVotes.counted }}</strong> dihitung. Yang dihitung paling banyak
-            {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari (sama dengan targetnya); kelebihannya
-            tetap tersimpan.
+            Stakeholders: <strong>{{ stakeholderVotes.raw }}</strong> vote masuk (kolom Voting),
+            <strong>{{ stakeholderVotes.counted }}</strong> dihitung untuk Gap dan persentase. Yang
+            dihitung paling banyak {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari (sama dengan
+            targetnya), jadi persentase per orang maksimal 100%.
           </p>
 
           <div class="pagination">
@@ -592,8 +592,8 @@ import {
   STAKEHOLDER_DAILY_TARGET,
   STAKEHOLDER_JENIS,
   buildRow,
-  capStakeholderVotes,
   countByJenis,
+  markStakeholderVotes,
   employeesOn,
   isCountedEmployee,
   sumRows,
@@ -835,10 +835,12 @@ watch(selectedSurveyFilterId, () => {
 const filteredSubmissions = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey) return [];
-  // The public numbers come pre-counted from the database; for the admin view
-  // each stakeholder's votes are capped per day here (lib/participation.js).
+  // Every vote is kept, so Voting shows what came in; stakeholder votes over the
+  // daily cap are marked `uncounted` and left out of Gap and Percentage. The
+  // public numbers arrive already marked from the database; for the admin view
+  // the marking is done here (lib/participation.js).
   if (props.publicMode) return publicSubmissions.value.filter((s) => s.surveyId === survey.id);
-  return capStakeholderVotes(store.submissions.filter((s) => s.surveyId === survey.id));
+  return markStakeholderVotes(store.submissions.filter((s) => s.surveyId === survey.id));
 });
 
 const deptSubmissions = computed(() => {
@@ -848,19 +850,12 @@ const deptSubmissions = computed(() => {
     : [];
 });
 
-// Stakeholder votes that came in vs. the ones counted (at most 2 per person per
-// day), for the note under the per-Divisi table. Admin view only.
+// Stakeholder votes that came in vs. the ones counted for Gap and Percentage (at
+// most the daily target per person), for the note under the per-Divisi table.
 const stakeholderVotes = computed(() => {
-  const survey = selectedSurveyFilter.value;
-  if (props.publicMode || !survey) return null;
-  const raw = store.submissions.filter(
-    (s) =>
-      s.surveyId === survey.id &&
-      s.jenisPegawai === STAKEHOLDER_JENIS &&
-      (isInternal.value || (selectedTanggal.value && s.tanggal === selectedTanggal.value))
-  ).length;
-  const counted = deptSubmissions.value.filter((s) => s.jenisPegawai === STAKEHOLDER_JENIS).length;
-  return { raw, counted };
+  if (!selectedSurveyFilter.value) return null;
+  const stakeholders = deptSubmissions.value.filter((s) => s.jenisPegawai === STAKEHOLDER_JENIS);
+  return { raw: stakeholders.length, counted: stakeholders.filter((s) => !s.uncounted).length };
 });
 
 // Every day of the survey's period up to today (or its end), so the per-Tanggal

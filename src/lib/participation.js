@@ -40,6 +40,20 @@ export function capStakeholderVotes(submissions) {
   });
 }
 
+// Same cap, but nothing is dropped: the submissions above the cap come back
+// marked `uncounted: true`. The report shows ALL stakeholder votes in its Voting
+// column, while Gap and Percentage use only the counted ones (countByJenis).
+export function markStakeholderVotes(submissions) {
+  const perPersonDay = new Map();
+  return submissions.map((submission) => {
+    if (!isStakeholder(submission)) return submission;
+    const key = `${submission.nama}|${submission.tanggal}`;
+    const count = (perPersonDay.get(key) ?? 0) + 1;
+    perPersonDay.set(key, count);
+    return count <= STAKEHOLDER_DAILY_TARGET ? submission : { ...submission, uncounted: true };
+  });
+}
+
 // Who the reports draw their headcount from: active Organik / TAD, and EVERY
 // stakeholder, active or not. A stakeholder's own date window (employeesOn)
 // decides on which days they count, so switching an account off afterwards does
@@ -62,15 +76,19 @@ export function employeesOn(employees, tanggal) {
   });
 }
 
-// { organik, nonOrganik, stakeholder } counts of a list of employees or
-// submissions (anything with `jenisPegawai`). Unknown values count as TAD,
-// which is what the code did before stakeholders existed.
+// { organik, nonOrganik, stakeholder, stakeholderMasuk } counts of a list of
+// employees or submissions (anything with `jenisPegawai`). Unknown values count
+// as TAD, which is what the code did before stakeholders existed. `stakeholder`
+// leaves out submissions marked `uncounted` (markStakeholderVotes);
+// `stakeholderMasuk` counts every one.
 export function countByJenis(list) {
-  const counts = { organik: 0, nonOrganik: 0, stakeholder: 0 };
+  const counts = { organik: 0, nonOrganik: 0, stakeholder: 0, stakeholderMasuk: 0 };
   for (const item of list) {
     if (item.jenisPegawai === "Organik") counts.organik++;
-    else if (item.jenisPegawai === STAKEHOLDER_JENIS) counts.stakeholder++;
-    else counts.nonOrganik++;
+    else if (item.jenisPegawai === STAKEHOLDER_JENIS) {
+      counts.stakeholderMasuk++;
+      if (!item.uncounted) counts.stakeholder++;
+    } else counts.nonOrganik++;
   }
   return counts;
 }
@@ -82,8 +100,11 @@ const percent = (value, total) => (total > 0 ? Math.round((value / total) * 1000
 function finalize(key, base) {
   const pegawaiTotal = base.pegawaiOrganik + base.pegawaiNonOrganik + base.pegawaiStakeholder;
   const targetTotal = base.targetOrganik + base.targetNonOrganik + base.targetStakeholder;
+  // `pengisian*` is what is SHOWN as Voting (every vote that came in); `hitung*`
+  // is what Gap and Percentage use (stakeholder votes capped per person per day).
   const pengisianTotal =
     base.pengisianOrganik + base.pengisianNonOrganik + base.pengisianStakeholder;
+  const hitungTotal = base.pengisianOrganik + base.pengisianNonOrganik + base.hitungStakeholder;
 
   return {
     key,
@@ -93,12 +114,13 @@ function finalize(key, base) {
     pengisianTotal,
     gapOrganik: base.pengisianOrganik - base.targetOrganik,
     gapNonOrganik: base.pengisianNonOrganik - base.targetNonOrganik,
-    gapStakeholder: base.pengisianStakeholder - base.targetStakeholder,
-    gapTotal: pengisianTotal - targetTotal,
+    hitungTotal,
+    gapStakeholder: base.hitungStakeholder - base.targetStakeholder,
+    gapTotal: hitungTotal - targetTotal,
     persenOrganik: percent(base.pengisianOrganik, base.targetOrganik),
     persenNonOrganik: percent(base.pengisianNonOrganik, base.targetNonOrganik),
-    persenStakeholder: percent(base.pengisianStakeholder, base.targetStakeholder),
-    persenTotal: percent(pengisianTotal, targetTotal),
+    persenStakeholder: percent(base.hitungStakeholder, base.targetStakeholder),
+    persenTotal: percent(hitungTotal, targetTotal),
   };
 }
 
@@ -114,7 +136,8 @@ export function buildRow(key, pegawai, pengisian, limit) {
     targetStakeholder: pegawai.stakeholder * STAKEHOLDER_DAILY_TARGET,
     pengisianOrganik: pengisian.organik,
     pengisianNonOrganik: pengisian.nonOrganik,
-    pengisianStakeholder: pengisian.stakeholder,
+    pengisianStakeholder: pengisian.stakeholderMasuk ?? pengisian.stakeholder,
+    hitungStakeholder: pengisian.stakeholder,
   });
 }
 
@@ -137,5 +160,6 @@ export function sumRows(rows, pegawaiMode = "sum") {
     pengisianOrganik: sum("pengisianOrganik"),
     pengisianNonOrganik: sum("pengisianNonOrganik"),
     pengisianStakeholder: sum("pengisianStakeholder"),
+    hitungStakeholder: sum("hitungStakeholder"),
   });
 }
