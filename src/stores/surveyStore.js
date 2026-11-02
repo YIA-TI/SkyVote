@@ -8,6 +8,7 @@ import {
   capStakeholderVotes,
   countByJenis,
   employeesOn,
+  isCountedEmployee,
 } from "../lib/participation";
 import { wibDateOf, wibToday } from "../lib/wib";
 
@@ -155,18 +156,24 @@ function mapEmployee(row) {
     unitKerja: row.unit_kerja,
     jenisPegawai: row.jenis_pegawai,
     isActive: row.is_active ?? true,
-    // The WIB day the record was created. A stakeholder's target only counts
-    // from this day on (see employeesOn in lib/participation.js).
-    registeredOn: wibDateOf(row.created_at),
+    // A stakeholder's target counts only from `targetMulai` (the day the record
+    // was created, unless set) to `targetSelesai` (empty = no end yet); see
+    // employeesOn in lib/participation.js. Not used for Organik / TAD.
+    targetMulai: row.target_mulai ?? wibDateOf(row.created_at),
+    targetSelesai: row.target_selesai ?? "",
   };
 }
 
-function toEmployeeRow({ nip, nama, unitKerja, jenisPegawai }) {
+function toEmployeeRow({ nip, nama, unitKerja, jenisPegawai, targetMulai, targetSelesai }) {
+  const stakeholder = jenisPegawai === STAKEHOLDER_JENIS;
   return {
     nip: nip ? nip.trim() : null,
     nama: nama.trim(),
     unit_kerja: unitKerja,
     jenis_pegawai: jenisPegawai,
+    // The target window only exists for stakeholders.
+    target_mulai: stakeholder ? targetMulai || null : null,
+    target_selesai: stakeholder ? targetSelesai || null : null,
   };
 }
 
@@ -288,14 +295,15 @@ export const useSurveyStore = defineStore("survey", {
 
     participationGroupedBy(state) {
       // `dateKeys`: the keys are days (YYYY-MM-DD), so each row's headcount is
-      // the people who counted on THAT day (a stakeholder only from the day
-      // they were registered). Otherwise every row shares one headcount.
+      // the people who counted on THAT day (a stakeholder only inside its target
+      // window, whether or not the account is active now). Otherwise every row
+      // shares today's headcount.
       return (getKey, submissionsList, allKeys, maxPengisian = 1, dateKeys = false) => {
         // `submissionsList` should already have stakeholder votes capped (see
         // capStakeholderVotes).
         const list = submissionsList ?? capStakeholderVotes(state.submissions);
-        const active = state.employees.filter((e) => e.isActive);
-        const sharedPegawai = countByJenis(active);
+        const pool = state.employees.filter(isCountedEmployee);
+        const sharedPegawai = countByJenis(employeesOn(pool, wibToday()));
 
         const grouped = new Map();
         if (allKeys) {
@@ -311,7 +319,7 @@ export const useSurveyStore = defineStore("survey", {
         return Array.from(grouped.entries()).map(([key, submissions]) =>
           buildRow(
             key,
-            dateKeys ? countByJenis(employeesOn(active, key)) : sharedPegawai,
+            dateKeys ? countByJenis(employeesOn(pool, key)) : sharedPegawai,
             countByJenis(submissions),
             maxPengisian
           )
@@ -568,9 +576,21 @@ export const useSurveyStore = defineStore("survey", {
     // inactive so the public survey form's name search and the "belum
     // mengisi survei" list stop offering them.
     async setEmployeeActive(employeeId, isActive) {
+      const patch = { is_active: isActive };
+
+      // Switching a stakeholder off does NOT erase the days it counted (the
+      // report keeps counting it inside its target window). If no end date was
+      // set, the window now ends today, so the target stops growing from
+      // tomorrow. An end date that was set on purpose is never overwritten.
+      const current = this.employees.find((e) => e.id === employeeId);
+      if (!isActive && current?.jenisPegawai === STAKEHOLDER_JENIS && !current.targetSelesai) {
+        const today = wibToday();
+        patch.target_selesai = current.targetMulai && current.targetMulai > today ? current.targetMulai : today;
+      }
+
       const { data, error } = await supabase
         .from("employees")
-        .update({ is_active: isActive })
+        .update(patch)
         .eq("id", employeeId)
         .select()
         .single();

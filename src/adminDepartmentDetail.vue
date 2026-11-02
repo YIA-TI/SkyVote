@@ -56,6 +56,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import EmployeeSurveyStatusTable from "./components/EmployeeSurveyStatusTable.vue";
+import { employeesOn, isCountedEmployee } from "./lib/participation";
 import { useSurveyStore } from "./stores/surveyStore";
 
 const store = useSurveyStore();
@@ -91,8 +92,14 @@ const backToReportLink = computed(() => ({
   },
 }));
 
+// Organik / TAD: the active ones. Stakeholders: the ones whose target window
+// covers the chosen day, even if the account has been switched off since, so the
+// days they were needed can still be reviewed.
 const employeesInDept = computed(() =>
-  store.employees.filter((e) => e.isActive && e.unitKerja === departmentName.value)
+  employeesOn(
+    store.employees.filter((e) => isCountedEmployee(e) && e.unitKerja === departmentName.value),
+    selectedTanggal.value
+  )
 );
 </script>
 

@@ -7,9 +7,9 @@
 //   - Stakeholder ("buzzer"): a fixed target of STAKEHOLDER_DAILY_TARGET votes
 //     per person per day, which is also their daily maximum (the database
 //     refuses a 101st submission in a day). The percentage is plain
-//     votes / target. A stakeholder only counts from the day they were
-//     registered (see employeesOn), so adding one never lowers the figures of
-//     earlier days.
+//     votes / target. A stakeholder only counts inside its own date window
+//     (see employeesOn), so neither adding one nor switching one off changes
+//     the figures of days outside that window.
 
 export const STAKEHOLDER_JENIS = "Stakeholder";
 
@@ -36,15 +36,26 @@ export function capStakeholderVotes(submissions) {
   });
 }
 
-// The participants who count on a given day (YYYY-MM-DD): everyone, except
-// stakeholders registered AFTER that day. `registeredOn` is the WIB date the
-// employee record was created; a missing value counts as "always there".
-// Without a day (internal surveys, which have none) nobody is filtered out.
+// Who the reports draw their headcount from: active Organik / TAD, and EVERY
+// stakeholder, active or not. A stakeholder's own date window (employeesOn)
+// decides on which days they count, so switching an account off afterwards does
+// not erase the days it was needed.
+export const isCountedEmployee = (employee) => isStakeholder(employee) || !!employee.isActive;
+
+// The participants who count on a given day (YYYY-MM-DD). Organik and TAD always
+// do (the caller has already kept only the active ones); a stakeholder counts
+// only inside its window: from `targetMulai` (the day it was registered, unless
+// set otherwise) to `targetSelesai` (empty = no end yet).
+// Without a day (internal surveys have none) stakeholders are left out: they
+// take part in external surveys only.
 export function employeesOn(employees, tanggal) {
-  if (!tanggal) return employees;
-  return employees.filter(
-    (employee) => !isStakeholder(employee) || !employee.registeredOn || employee.registeredOn <= tanggal
-  );
+  if (!tanggal) return employees.filter((employee) => !isStakeholder(employee));
+  return employees.filter((employee) => {
+    if (!isStakeholder(employee)) return true;
+    if (employee.targetMulai && tanggal < employee.targetMulai) return false;
+    if (employee.targetSelesai && tanggal > employee.targetSelesai) return false;
+    return true;
+  });
 }
 
 // { organik, nonOrganik, stakeholder } counts of a list of employees or

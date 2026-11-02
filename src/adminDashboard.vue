@@ -157,7 +157,13 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
-import { buildRow, capStakeholderVotes, countByJenis, employeesOn } from "./lib/participation";
+import {
+  buildRow,
+  capStakeholderVotes,
+  countByJenis,
+  employeesOn,
+  isCountedEmployee,
+} from "./lib/participation";
 import { ORG_CHILDREN_BY_PARENT, ORG_PARENT_KEYS, shortDeptName } from "./orgStructure";
 import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 
@@ -228,10 +234,11 @@ const filteredSubmissions = computed(() => {
 // Target and voting for a group of units; stakeholders count towards both with
 // their own target rule, like everyone else's.
 function unitFigures(key, unitSet) {
-  // For the chosen day, a stakeholder registered after it is not counted yet; an
-  // internal survey has no day, so everyone counts.
+  // For the chosen day a stakeholder counts only inside its target window, even if
+  // the account has been switched off since; an internal survey has no day, and
+  // stakeholders take part in external surveys only.
   const employees = employeesOn(
-    store.employees.filter((e) => e.isActive && unitSet.has(e.unitKerja)),
+    store.employees.filter((e) => isCountedEmployee(e) && unitSet.has(e.unitKerja)),
     isInternal.value ? "" : selectedTanggal.value
   );
   const submissions = filteredSubmissions.value.filter((s) => unitSet.has(s.departemen));

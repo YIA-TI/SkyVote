@@ -594,6 +594,7 @@ import {
   capStakeholderVotes,
   countByJenis,
   employeesOn,
+  isCountedEmployee,
   sumRows,
 } from "./lib/participation";
 import { jenisPegawaiLabel, surveyQuota, useSurveyStore } from "./stores/surveyStore";
@@ -719,10 +720,11 @@ function buildDeptRow(key, deptNames) {
   const limit = surveyQuota(selectedSurveyFilter.value).limit;
   const deptSet = new Set(deptNames);
 
-  // For a chosen day, a stakeholder registered after that day is not counted
-  // yet (employeesOn); an internal survey has no day, so everyone counts.
+  // For the chosen day a stakeholder counts only inside its target window, even
+  // if the account has been switched off since (employeesOn). An internal survey
+  // has no day, and stakeholders take part in external surveys only.
   const employeesHere = employeesOn(
-    store.employees.filter((e) => e.isActive && deptSet.has(e.unitKerja)),
+    store.employees.filter((e) => isCountedEmployee(e) && deptSet.has(e.unitKerja)),
     isInternal.value ? "" : selectedTanggal.value
   );
   const scoped = deptSubmissions.value.filter((s) => deptSet.has(s.departemen));

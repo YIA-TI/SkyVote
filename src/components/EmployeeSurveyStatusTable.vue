@@ -313,16 +313,20 @@ function datesBetween(start, end) {
 }
 
 // The days the employee was expected to fill: from the start of the survey
-// period up to today (or the end of the period, if it is already over).
+// period up to today (or the end of the period, if it is already over). A
+// stakeholder is only expected inside their own target window.
 const detailDates = computed(() => {
   let start = survey.value?.tanggalMulai || detailSubmissions.value[0]?.tanggal;
   if (!start) return [];
-  // A stakeholder was only expected to vote from the day they were registered.
-  const registeredOn = detailEmployee.value?.registeredOn;
-  if (isStakeholder(detailEmployee.value) && registeredOn && registeredOn > start) start = registeredOn;
   const today = wibToday();
-  const end = survey.value?.tanggalSelesai && survey.value.tanggalSelesai < today ? survey.value.tanggalSelesai : today;
-  return datesBetween(start, end);
+  let end = survey.value?.tanggalSelesai && survey.value.tanggalSelesai < today ? survey.value.tanggalSelesai : today;
+
+  if (isStakeholder(detailEmployee.value)) {
+    const { targetMulai, targetSelesai } = detailEmployee.value;
+    if (targetMulai && targetMulai > start) start = targetMulai;
+    if (targetSelesai && targetSelesai < end) end = targetSelesai;
+  }
+  return start > end ? [] : datesBetween(start, end);
 });
 
 // External surveys are per day, so the detail lists every day of the period

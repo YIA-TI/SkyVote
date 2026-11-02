@@ -221,7 +221,7 @@
                 </select>
                 <p v-if="isStakeholderForm" class="field-helper">
                   Target Stakeholder {{ STAKEHOLDER_DAILY_TARGET }} vote per hari (itu juga batas
-                  maksimalnya per hari), dihitung mulai hari ia didaftarkan. Unitnya otomatis
+                  maksimalnya per hari), hanya pada tanggal yang diisi di bawah. Unitnya otomatis
                   "{{ STAKEHOLDER_UNIT }}" dan tampil sebagai divisi tersendiri di laporan.
                 </p>
                 <p v-if="jenisChanged" class="field-warning" role="status">
@@ -229,6 +229,35 @@
                   baru yang memakai jenis ini.
                 </p>
               </div>
+
+              <!-- Stakeholders only: on which days their target counts. Switching the
+                   account off later does not change these days. -->
+              <div v-if="isStakeholderForm" class="field-pair">
+                <div class="field">
+                  <label class="field-label" for="karyawan-target-mulai">Target berlaku dari</label>
+                  <input
+                    id="karyawan-target-mulai"
+                    v-model="form.targetMulai"
+                    class="input"
+                    type="date"
+                    required
+                  />
+                </div>
+                <div class="field">
+                  <label class="field-label" for="karyawan-target-selesai">Sampai (opsional)</label>
+                  <input
+                    id="karyawan-target-selesai"
+                    v-model="form.targetSelesai"
+                    class="input"
+                    type="date"
+                    :min="form.targetMulai || undefined"
+                  />
+                </div>
+              </div>
+              <p v-if="isStakeholderForm" class="field-helper">
+                Kosongkan "Sampai" bila belum ditentukan: saat akun dinonaktifkan, tanggal akhir terisi
+                otomatis hari itu. Menonaktifkan akun tidak menghapus target pada hari-hari yang sudah lewat.
+              </p>
 
               <div class="form-footer">
                 <button type="button" class="confirm-btn confirm-btn-secondary" @click="closeForm">Batal</button>
@@ -261,6 +290,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { pageItems } from "./lib/pagination";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { STAKEHOLDER_DAILY_TARGET, STAKEHOLDER_JENIS } from "./lib/participation";
+import { wibToday } from "./lib/wib";
 import { ORG_STRUCTURE, STAKEHOLDER_UNIT, shortDeptName } from "./orgStructure.js";
 import { jenisPegawaiLabel, useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
@@ -306,7 +336,15 @@ const pagedEmployees = computed(() => filteredEmployees.value.slice(pageStart.va
 const formOpen = ref(false);
 const editingId = ref(null);
 const saving = ref(false);
-const form = reactive({ nip: "", nama: "", unitKerja: "", jenisPegawai: "Organik" });
+const form = reactive({
+  nip: "",
+  nama: "",
+  unitKerja: "",
+  jenisPegawai: "Organik",
+  // Stakeholders only: the days their target counts (see lib/participation.js).
+  targetMulai: "",
+  targetSelesai: "",
+});
 
 // A stakeholder always sits in the "Stakeholders" unit (the reports and the
 // database both rely on that), so the two fields are kept in step: choosing the
@@ -356,6 +394,8 @@ function resetForm() {
   form.nama = "";
   form.unitKerja = "";
   form.jenisPegawai = "Organik";
+  form.targetMulai = wibToday(); // a new stakeholder's target starts today...
+  form.targetSelesai = ""; // ...with no end date unless one is set
 }
 
 function openAddForm() {
@@ -370,6 +410,8 @@ function openEditForm(employee) {
   form.nama = employee.nama;
   form.unitKerja = employee.unitKerja;
   form.jenisPegawai = employee.jenisPegawai;
+  form.targetMulai = employee.targetMulai || wibToday();
+  form.targetSelesai = employee.targetSelesai || "";
   original.nama = employee.nama;
   original.unitKerja = employee.unitKerja;
   original.jenisPegawai = employee.jenisPegawai;
@@ -624,6 +666,18 @@ async function reactivate(employee) {
 
 .status-stakeholder {
   background-color: var(--color-primary);
+}
+
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .field-pair {
+    grid-template-columns: 1fr;
+  }
 }
 
 .field-helper {
