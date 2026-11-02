@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { compressImage } from "../lib/imageCompress";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import {
+  STAKEHOLDER_DAILY_CEILING,
   STAKEHOLDER_DAILY_TARGET,
   STAKEHOLDER_JENIS,
   buildRow,
@@ -102,22 +103,29 @@ function toSurveyRow({
 //   - External: `maxPengisian` submissions per employee PER DAY.
 // `perDay` says whether counts should be taken for a single date or across
 // every date. (The database enforces the same rule in enforce_submission_quota.)
-//   - Stakeholder participants (external surveys): STAKEHOLDER_DAILY_TARGET per
-//     day, which is both their target and their daily maximum. Pass the
+//   - Stakeholder participants (external surveys): `limit` is the daily maximum
+//     they may submit (STAKEHOLDER_DAILY_CEILING), `target` the number the
+//     report expects and counts (STAKEHOLDER_DAILY_TARGET). Pass the
 //     participant as the second argument to get this; without it the survey's
 //     own rule is returned.
 export function surveyQuota(survey, participant) {
   if (survey?.tipe === "Internal") return { limit: 1, perDay: false };
   if (participant?.jenisPegawai === STAKEHOLDER_JENIS) {
-    return { limit: STAKEHOLDER_DAILY_TARGET, perDay: true, stakeholder: true };
+    return {
+      limit: STAKEHOLDER_DAILY_CEILING,
+      target: STAKEHOLDER_DAILY_TARGET,
+      perDay: true,
+      stakeholder: true,
+    };
   }
   return { limit: survey?.maxPengisian ?? 1, perDay: true };
 }
 
 // What counts as "done" for one participant on one day (or for the period, for
-// an internal survey).
+// an internal survey). For a stakeholder that is the target, not the maximum.
 export function dayTarget(survey, participant) {
-  return surveyQuota(survey, participant).limit;
+  const quota = surveyQuota(survey, participant);
+  return quota.target ?? quota.limit;
 }
 
 function mapQuestion(row) {
@@ -253,7 +261,7 @@ export const useSurveyStore = defineStore("survey", {
       return (surveyId, nama, tanggal) => {
         const survey = this.findSurvey(surveyId);
         if (!survey || !nama) return false;
-        // A stakeholder is never "full": there is no maximum.
+        // A stakeholder is only "full" at the daily ceiling, not at the target.
         const participant = this.employees.find((e) => e.nama === nama);
         const { limit, perDay } = surveyQuota(survey, participant);
         if (!limit || (perDay && !tanggal)) return false;

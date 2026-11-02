@@ -414,7 +414,8 @@
           >
             Stakeholders: <strong>{{ stakeholderVotes.raw }}</strong> vote masuk,
             <strong>{{ stakeholderVotes.counted }}</strong> dihitung. Yang dihitung paling banyak
-            {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari, sama dengan targetnya.
+            {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari (sama dengan targetnya); kelebihannya
+            tetap tersimpan.
           </p>
 
           <div class="pagination">

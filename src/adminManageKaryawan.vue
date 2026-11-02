@@ -220,8 +220,10 @@
                   <option value="Stakeholder">Stakeholder</option>
                 </select>
                 <p v-if="isStakeholderForm" class="field-helper">
-                  Target Stakeholder {{ STAKEHOLDER_DAILY_TARGET }} vote per hari (itu juga batas
-                  maksimalnya per hari), hanya pada tanggal yang diisi di bawah. Unitnya otomatis
+                  Target Stakeholder {{ STAKEHOLDER_DAILY_TARGET }} vote per hari, hanya pada tanggal
+                  yang diisi di bawah. Boleh mengisi lebih (maksimal {{ STAKEHOLDER_DAILY_CEILING }}
+                  per hari), tetapi yang dihitung di laporan paling banyak
+                  {{ STAKEHOLDER_DAILY_TARGET }}. Unitnya otomatis
                   "{{ STAKEHOLDER_UNIT }}" dan tampil sebagai divisi tersendiri di laporan.
                 </p>
                 <p v-if="jenisChanged" class="field-warning" role="status">
@@ -289,7 +291,11 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { pageItems } from "./lib/pagination";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
-import { STAKEHOLDER_DAILY_TARGET, STAKEHOLDER_JENIS } from "./lib/participation";
+import {
+  STAKEHOLDER_DAILY_CEILING,
+  STAKEHOLDER_DAILY_TARGET,
+  STAKEHOLDER_JENIS,
+} from "./lib/participation";
 import { wibToday } from "./lib/wib";
 import { ORG_STRUCTURE, STAKEHOLDER_UNIT, shortDeptName } from "./orgStructure.js";
 import { jenisPegawaiLabel, useSurveyStore } from "./stores/surveyStore";

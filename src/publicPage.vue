@@ -143,8 +143,11 @@
               </p>
             </div>
             <p v-if="selectedEmployee && selectedSurvey" class="name-quota-info" :class="quotaBadgeClass">
-              <template v-if="quota.perDay">
-                <template v-if="quota.stakeholder">Stakeholder: </template>
+              <template v-if="quota.stakeholder">
+                Stakeholder: Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }}
+                pada tanggal ini (target {{ quota.target }}, maksimal {{ quota.limit }} per hari)
+              </template>
+              <template v-else-if="quota.perDay">
                 Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ quota.limit }}
                 pada tanggal ini
               </template>
@@ -459,7 +462,8 @@ watch(
 
 // External surveys: maxPengisian per day (counted for the date above).
 // Internal surveys: once for the whole period (every date counts).
-// Stakeholders (external surveys): a fixed 100 a day, which is also their maximum.
+// Stakeholders (external surveys): target 100 a day, but they may submit up to the
+// daily ceiling (`limit`); only the target is counted in the reports.
 const quota = computed(() => surveyQuota(selectedSurvey.value, selectedEmployee.value));
 
 // The local cache only has data in an admin session, so take whichever is higher.

@@ -4,27 +4,31 @@
 // Three kinds of participant:
 //   - Organik and TAD (Non-Organik): bound by the survey's per-day limit, so
 //     their target is `limit` votes per person per day.
-//   - Stakeholder ("buzzer"): a fixed target of STAKEHOLDER_DAILY_TARGET votes
-//     per person per day, which is also their daily maximum (the database
-//     refuses a 101st submission in a day). The percentage is plain
-//     votes / target. A stakeholder only counts inside its own date window
-//     (see employeesOn), so neither adding one nor switching one off changes
-//     the figures of days outside that window.
+//   - Stakeholder ("buzzer"): a target of STAKEHOLDER_DAILY_TARGET votes per
+//     person per day. They may submit MORE than that (up to the safety ceiling
+//     STAKEHOLDER_DAILY_CEILING a day), but at most the target is COUNTED, so the
+//     percentage is votes / target, never above 100%, and extra votes cannot
+//     hide a shortfall elsewhere in the totals. A stakeholder only counts inside
+//     its own date window (see employeesOn), so neither adding one nor switching
+//     one off changes the figures of days outside that window.
 
 export const STAKEHOLDER_JENIS = "Stakeholder";
 
-// Votes expected from one stakeholder per day. Keep it equal to the safety
-// ceiling c_stakeholder_daily_ceiling in the database (migration 032), and to
-// the cap in public_report_counts (migration 033).
+// Votes expected from one stakeholder per day, and the most that are counted.
+// Keep it equal to the cap in public_report_counts (migration 033).
 export const STAKEHOLDER_DAILY_TARGET = 100;
+
+// The most a stakeholder can submit in a day: a loose safety limit, not the
+// target. Keep it equal to c_stakeholder_daily_ceiling in the database
+// (migration 035).
+export const STAKEHOLDER_DAILY_CEILING = 1000;
 
 export const isStakeholder = (participant) => participant?.jenisPegawai === STAKEHOLDER_JENIS;
 
 // Keeps at most STAKEHOLDER_DAILY_TARGET submissions per stakeholder per day;
-// everyone else's submissions pass through untouched. The database already
-// refuses more than that, so this only matters if the ceiling is ever raised.
-// Needs `nama` on each submission, so it is for full submission rows (not
-// already-capped aggregates).
+// everyone else's submissions pass through untouched. Submissions above that are
+// allowed and stored, but not counted. Needs `nama` on each submission, so it is
+// for full submission rows (not already-capped aggregates).
 export function capStakeholderVotes(submissions) {
   const perPersonDay = new Map();
   return submissions.filter((submission) => {
