@@ -29,7 +29,7 @@
       </div>
     </div>
 
-    <div v-if="loading" class="state-card">Memuat hasil...</div>
+    <LoadingSpinner v-if="loading" />
 
     <template v-else>
       <div class="trend-card">
@@ -245,6 +245,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import LoadingSpinner from "./components/LoadingSpinner.vue";
 import { formatWibDateTime, wibToday } from "./lib/wib";
 import { useSurveyStore } from "./stores/surveyStore";
 import { useToastStore } from "./stores/toastStore";
