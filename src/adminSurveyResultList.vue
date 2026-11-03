@@ -57,7 +57,8 @@ import { useSurveyStore } from "./stores/surveyStore";
 const store = useSurveyStore();
 
 onMounted(() => {
-  store.ensureBaseData();
+  store.ensureLightData();
+  store.fetchSubmissionTotals().catch((err) => console.error("Gagal memuat jumlah responden:", err));
   store.fetchQuestionCounts();
 });
 
@@ -68,7 +69,7 @@ function questionCount(survey) {
 }
 
 function submissionCount(survey) {
-  return store.submissionsBySurvey(survey.id).length;
+  return store.surveySubmissionTotal(survey.id);
 }
 
 function statusClass(status) {

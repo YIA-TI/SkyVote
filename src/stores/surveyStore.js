@@ -32,16 +32,61 @@ export function jenisPegawaiLabel(jenisPegawai) {
 // received keeps this correct even if the project's cap is lower than the page
 // size asked for.
 async function fetchAllRows(buildQuery, pageSize = 1000) {
+  // The first page also tells the total (queries ask for `count: "exact"`), so
+  // the remaining pages can be fetched side by side instead of one after another.
+  // Without a count, fall back to walking the pages in order.
+  const first = await buildQuery(0, pageSize - 1);
+  if (first.error) throw first.error;
+  const rows = [...first.data];
+  const total = typeof first.count === "number" ? first.count : null;
+
+  if (total === null) {
+    for (let from = rows.length; first.data.length > 0; ) {
+      const { data, error } = await buildQuery(from, from + pageSize - 1);
+      if (error) throw error;
+      if (data.length === 0) break;
+      rows.push(...data);
+      from += data.length;
+    }
+    return rows;
+  }
+
+  const starts = [];
+  for (let from = pageSize; from < total; from += pageSize) starts.push(from);
+  const MAX_PARALLEL = 6;
+  const pages = new Array(starts.length);
+  let next = 0;
+  async function worker() {
+    while (next < starts.length) {
+      const index = next++;
+      const { data, error } = await buildQuery(starts[index], starts[index] + pageSize - 1);
+      if (error) throw error;
+      pages[index] = data;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL, starts.length) }, worker));
+  for (const page of pages) rows.push(...page);
+  return rows;
+}
+
+// Turns aggregate rows (tanggal / departemen / jenis with jumlah and jumlah_asli)
+// into submission-shaped rows without any personal data, so the reports can use
+// the same grouping code as for real submissions. The first `jumlah` rows of a
+// group count; any beyond that (stakeholder votes over the daily cap) come marked
+// `uncounted` — shown as Voting, left out of Gap and Percentage.
+function expandCountRows(data, surveyId) {
   const rows = [];
-  let total = null;
-  for (let from = 0; ; ) {
-    const { data, error, count } = await buildQuery(from, from + pageSize - 1);
-    if (error) throw error;
-    if (typeof count === "number") total = count;
-    if (data.length === 0) break;
-    rows.push(...data);
-    from += data.length;
-    if (total !== null && rows.length >= total) break;
+  for (const row of data) {
+    const masuk = row.jumlah_asli ?? row.jumlah;
+    for (let i = 0; i < masuk; i++) {
+      rows.push({
+        surveyId,
+        tanggal: row.tanggal,
+        departemen: row.departemen,
+        jenisPegawai: row.jenis_pegawai,
+        ...(i >= row.jumlah ? { uncounted: true } : {}),
+      });
+    }
   }
   return rows;
 }
@@ -203,6 +248,7 @@ const LAST_SUBMISSION_KEY = "skyvote:lastSubmission";
 // The currently running initial load, if any (see ensureBaseData / ensurePublicData).
 let baseDataPromise = null;
 let publicDataPromise = null;
+let lightDataPromise = null;
 
 function loadLastSubmission() {
   try {
@@ -231,7 +277,13 @@ export const useSurveyStore = defineStore("survey", {
     workforceTotals: { Organik: 0, "Non-Organik": 0 },
     lastSubmission: loadLastSubmission(),
     baseDataLoaded: false,
+    lightDataLoaded: false,
     publicDataLoaded: false,
+    // Total submissions per survey id (fetchSubmissionTotals) and a counter that
+    // goes up whenever a submission is added or removed, so screens built from
+    // aggregate RPCs know to reload.
+    submissionTotals: {},
+    submissionsVersion: 0,
     realtimeChannels: [],
     questionCounts: {},
   }),
@@ -242,6 +294,13 @@ export const useSurveyStore = defineStore("survey", {
 
     submissionCountForSurvey: (state) => (surveyId) =>
       state.submissions.filter((s) => s.surveyId === surveyId).length,
+
+    // Total for the survey lists: live from the loaded rows when they are there,
+    // otherwise from the per-survey totals (fetchSubmissionTotals).
+    surveySubmissionTotal: (state) => (surveyId) =>
+      state.baseDataLoaded
+        ? state.submissions.filter((s) => s.surveyId === surveyId).length
+        : state.submissionTotals[surveyId] ?? 0,
 
     // External surveys limit per day, so pass `tanggal` to count only the
     // submissions made for that day. Internal surveys limit per period, so
@@ -410,22 +469,35 @@ export const useSurveyStore = defineStore("survey", {
           .rpc("public_report_counts", { p_survey_id: surveyId }, { count: "exact" })
           .range(from, to)
       );
-      const rows = [];
-      for (const row of data) {
-        const masuk = row.jumlah_asli ?? row.jumlah;
-        for (let i = 0; i < masuk; i++) {
-          rows.push({
-            surveyId,
-            tanggal: row.tanggal,
-            departemen: row.departemen,
-            jenisPegawai: row.jenis_pegawai,
-            // Past `jumlah` = stakeholder votes over the daily cap: shown as
-            // Voting, left out of Gap and Percentage.
-            ...(i >= row.jumlah ? { uncounted: true } : {}),
-          });
-        }
-      }
-      return rows;
+      return expandCountRows(data, surveyId);
+    },
+
+    // The same for admins (any survey, nothing hidden), so the admin report and
+    // dashboard no longer need the whole submissions table in the browser.
+    async fetchAdminReportSubmissions(surveyId) {
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .rpc("admin_report_counts", { p_survey_id: surveyId }, { count: "exact" })
+          .range(from, to)
+      );
+      return expandCountRows(data, surveyId);
+    },
+
+    // Map of nama -> number of submissions for one survey (admin only).
+    async fetchVotesPerPerson(surveyId) {
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .rpc("admin_votes_per_person", { p_survey_id: surveyId }, { count: "exact" })
+          .range(from, to)
+      );
+      return new Map(data.map((row) => [row.nama, row.jumlah]));
+    },
+
+    // Total submissions per survey, for the survey lists.
+    async fetchSubmissionTotals() {
+      const { data, error } = await supabase.rpc("submission_counts_by_survey");
+      if (error) throw new Error(error.message);
+      this.submissionTotals = Object.fromEntries(data.map((row) => [row.survey_id, row.jumlah]));
     },
 
     async fetchEmployees() {
@@ -495,14 +567,40 @@ export const useSurveyStore = defineStore("survey", {
       return baseDataPromise;
     },
 
-    async loadBaseData() {
+    // Everything except the submissions table, which is by far the biggest part.
+    // Pages that only show counts (Dashboard, Laporan, survey lists) use this and
+    // get their numbers from the aggregate RPCs instead. Pages that need the
+    // individual rows call ensureBaseData.
+    async ensureLightData() {
+      if (this.lightDataLoaded || this.baseDataLoaded) return;
+      lightDataPromise ??= this.loadLightData().finally(() => {
+        lightDataPromise = null;
+      });
+      return lightDataPromise;
+    },
+
+    async loadLightData() {
       await Promise.all([
         this.fetchSurveys(),
         this.fetchEmployees(),
         this.fetchDepartments(),
-        this.fetchSubmissions(),
         this.fetchWorkforceTotals(),
       ]);
+      this.lightDataLoaded = true;
+    },
+
+    async loadBaseData() {
+      // If the light set is already there, only the submissions are missing.
+      const lightPart = this.lightDataLoaded
+        ? []
+        : [
+            this.fetchSurveys(),
+            this.fetchEmployees(),
+            this.fetchDepartments(),
+            this.fetchWorkforceTotals(),
+          ];
+      await Promise.all([...lightPart, this.fetchSubmissions()]);
+      this.lightDataLoaded = true;
       this.baseDataLoaded = true;
     },
 
@@ -969,6 +1067,7 @@ export const useSurveyStore = defineStore("survey", {
             const submission = mapSubmission(payload.new);
             this.submissions.push(submission);
             this.lastSubmission = submission;
+            this.submissionsVersion++;
           }
         )
         .on(
@@ -986,6 +1085,7 @@ export const useSurveyStore = defineStore("survey", {
           { event: "DELETE", schema: "public", table: "submissions" },
           (payload) => {
             this.submissions = this.submissions.filter((s) => s.id !== payload.old.id);
+            this.submissionsVersion++;
           }
         )
         .subscribe();

@@ -297,7 +297,10 @@ function closeFilterOnOutsideClick() {
 onMounted(() => {
   document.addEventListener("click", closeFilterOnOutsideClick);
   window.addEventListener("resize", positionFilterPopover);
-  store.ensureBaseData();
+  // Only the survey list and per-survey totals: the submissions themselves are
+  // not needed here.
+  store.ensureLightData();
+  store.fetchSubmissionTotals().catch((err) => console.error("Gagal memuat jumlah pengisian:", err));
   store.fetchQuestionCounts();
 });
 onBeforeUnmount(() => {
@@ -337,7 +340,7 @@ function formatPeriode(survey) {
 }
 
 function submissionCount(survey) {
-  return store.submissionsBySurvey(survey.id).length;
+  return store.surveySubmissionTotal(survey.id);
 }
 
 function questionCount(survey) {

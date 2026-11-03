@@ -577,7 +577,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   ORG_CHILDREN_BY_PARENT,
@@ -593,7 +593,6 @@ import {
   STAKEHOLDER_JENIS,
   buildRow,
   countByJenis,
-  markStakeholderVotes,
   employeesOn,
   isCountedEmployee,
   sumRows,
@@ -614,7 +613,10 @@ const toast = useToastStore();
 const route = useRoute();
 
 const publicSurveys = ref([]);
+// The survey's vote counts as aggregate rows (public or admin RPC, see
+// loadPublicSubmissions) and, in the admin view, the votes per person.
 const publicSubmissions = ref([]);
+const personVotes = ref(new Map());
 
 const surveyOptions = computed(() => (props.publicMode ? publicSurveys.value : store.surveys));
 
@@ -645,7 +647,9 @@ onMounted(async () => {
   try {
     // Employees (public read) are needed for the Jumlah / Target columns. The
     // public view skips the admin-only tables (submissions etc.) entirely.
-    await (props.publicMode ? store.ensurePublicData() : store.ensureBaseData());
+    // Neither view downloads the submissions table: the vote counts come from
+    // aggregate RPCs (public_report_counts / admin_report_counts).
+    await (props.publicMode ? store.ensurePublicData() : store.ensureLightData());
     if (props.publicMode) {
       try {
         publicSurveys.value = await store.fetchPublicReportSurveys();
@@ -684,7 +688,11 @@ async function refreshData() {
         await loadPublicSubmissions(selectedSurveyFilterId.value, { clear: false });
       }
     } else {
-      await Promise.all([store.fetchSurveys(), store.fetchEmployees(), store.fetchSubmissions()]);
+      await Promise.all([
+        store.fetchSurveys(),
+        store.fetchEmployees(),
+        loadPublicSubmissions(selectedSurveyFilterId.value, { clear: false }),
+      ]);
     }
     markUpdated();
   } catch (err) {
@@ -770,12 +778,25 @@ let publicRequest = 0;
 // flight, instead of flashing empty tables. Errors propagate to the caller.
 async function loadPublicSubmissions(surveyId, { clear = true } = {}) {
   const request = ++publicRequest;
-  if (clear) publicSubmissions.value = [];
+  if (clear) {
+    publicSubmissions.value = [];
+    personVotes.value = new Map();
+  }
   publicLoading.value = clear && !!surveyId;
   if (!surveyId) return;
   try {
-    const rows = await store.fetchPublicReportSubmissions(surveyId);
-    if (request === publicRequest) publicSubmissions.value = rows;
+    // Admin view: the same kind of aggregate rows, plus the votes per person for
+    // the "lowest voters" ranking.
+    const [rows, votes] = await Promise.all([
+      props.publicMode
+        ? store.fetchPublicReportSubmissions(surveyId)
+        : store.fetchAdminReportSubmissions(surveyId),
+      props.publicMode ? Promise.resolve(new Map()) : store.fetchVotesPerPerson(surveyId),
+    ]);
+    if (request === publicRequest) {
+      publicSubmissions.value = rows;
+      personVotes.value = votes;
+    }
   } finally {
     // Only the latest request may end the loading state; an older, slower one
     // finishing late must not hide the spinner of a newer survey pick.
@@ -784,7 +805,7 @@ async function loadPublicSubmissions(surveyId, { clear = true } = {}) {
 }
 
 watch(
-  () => (props.publicMode ? selectedSurveyFilterId.value : null),
+  selectedSurveyFilterId,
   async (surveyId) => {
     try {
       await loadPublicSubmissions(surveyId);
@@ -794,6 +815,25 @@ watch(
   },
   { immediate: true }
 );
+
+// Admin view: when submissions come in or are removed (realtime), reload the
+// counts quietly, at most once every few seconds however busy it gets.
+let reloadTimer = null;
+watch(
+  () => store.submissionsVersion,
+  () => {
+    if (props.publicMode || !selectedSurveyFilterId.value || reloadTimer) return;
+    reloadTimer = setTimeout(async () => {
+      reloadTimer = null;
+      try {
+        await loadPublicSubmissions(selectedSurveyFilterId.value, { clear: false });
+      } catch (err) {
+        console.error("Gagal memuat ulang data laporan:", err);
+      }
+    }, 5000);
+  }
+);
+onBeforeUnmount(() => clearTimeout(reloadTimer));
 
 const selectedSurveyFilter = computed(() =>
   selectedSurveyFilterId.value
@@ -836,11 +876,9 @@ const filteredSubmissions = computed(() => {
   const survey = selectedSurveyFilter.value;
   if (!survey) return [];
   // Every vote is kept, so Voting shows what came in; stakeholder votes over the
-  // daily cap are marked `uncounted` and left out of Gap and Percentage. The
-  // public numbers arrive already marked from the database; for the admin view
-  // the marking is done here (lib/participation.js).
-  if (props.publicMode) return publicSubmissions.value.filter((s) => s.surveyId === survey.id);
-  return markStakeholderVotes(store.submissions.filter((s) => s.surveyId === survey.id));
+  // daily cap are marked `uncounted` (by the database) and left out of Gap and
+  // Percentage.
+  return publicSubmissions.value.filter((s) => s.surveyId === survey.id);
 });
 
 const deptSubmissions = computed(() => {
@@ -905,8 +943,7 @@ const lowestVoters = computed(() => {
 
   const target = perEmployeeTarget.value;
 
-  const votes = new Map();
-  for (const s of filteredSubmissions.value) votes.set(s.nama, (votes.get(s.nama) ?? 0) + 1);
+  const votes = personVotes.value;
 
   // Stakeholders have their own rule (no maximum, minimum 2 a day), so they are
   // not ranked against employees here.

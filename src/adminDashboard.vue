@@ -44,7 +44,7 @@
       <p v-if="noFilterSelected" class="survey-required-warning">
         ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
-      <LoadingSpinner v-else-if="!dataReady" />
+      <LoadingSpinner v-else-if="!dataReady || rowsLoading" />
 
       <template v-else>
         <div class="stat-box">
@@ -108,7 +108,7 @@
       <p v-if="noFilterSelected" class="survey-required-warning">
         ⚠️ Pilih survei dan tanggal terlebih dahulu untuk melihat data partisipasi.
       </p>
-      <LoadingSpinner v-else-if="!dataReady" />
+      <LoadingSpinner v-else-if="!dataReady || rowsLoading" />
 
       <template v-else>
         <div class="legend">
@@ -155,11 +155,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import LoadingSpinner from "./components/LoadingSpinner.vue";
 import {
   buildRow,
-  capStakeholderVotes,
   countByJenis,
   employeesOn,
   isCountedEmployee,
@@ -177,7 +176,8 @@ const dataReady = ref(false);
 
 onMounted(async () => {
   try {
-    await store.ensureBaseData();
+    // No submissions table here: the vote counts come from an aggregate RPC.
+    await store.ensureLightData();
   } finally {
     dataReady.value = true;
   }
@@ -220,15 +220,65 @@ watch(selectedSurveyId, () => {
 
 const maxPengisian = computed(() => surveyQuota(selectedSurvey.value).limit);
 
-// A stakeholder's votes are capped at 2 per person per day (lib/participation.js)
-// so that, with their target of 2, the figures follow the 0 / 50 / 100% rule.
+// The chosen survey's vote counts come from the database already summed per
+// tanggal / departemen / jenis (admin_report_counts), instead of downloading every
+// submission. A stakeholder's votes over the daily cap come marked `uncounted` and
+// are left out here, as the dashboard counts at most the target per person.
+const surveyRows = ref([]);
+const rowsLoading = ref(false);
+let rowsRequest = 0;
+
+async function loadSurveyRows() {
+  const surveyId = selectedSurveyId.value;
+  const request = ++rowsRequest;
+  if (!surveyId) {
+    surveyRows.value = [];
+    rowsLoading.value = false;
+    return;
+  }
+  rowsLoading.value = true;
+  try {
+    const rows = await store.fetchAdminReportSubmissions(surveyId);
+    // A slower response for a survey picked earlier must not overwrite this one.
+    if (request === rowsRequest) surveyRows.value = rows;
+  } catch (err) {
+    console.error("Gagal memuat data dashboard:", err);
+  } finally {
+    if (request === rowsRequest) rowsLoading.value = false;
+  }
+}
+
+watch(selectedSurveyId, loadSurveyRows, { immediate: true });
+
+// Reload (quietly, keeping the old numbers on screen) when submissions come in or
+// are removed, at most once every few seconds however busy it gets.
+let reloadTimer = null;
+watch(
+  () => store.submissionsVersion,
+  () => {
+    if (!selectedSurveyId.value || reloadTimer) return;
+    reloadTimer = setTimeout(async () => {
+      reloadTimer = null;
+      const surveyId = selectedSurveyId.value;
+      if (!surveyId) return;
+      try {
+        const rows = await store.fetchAdminReportSubmissions(surveyId);
+        if (surveyId === selectedSurveyId.value) surveyRows.value = rows;
+      } catch (err) {
+        console.error("Gagal memuat ulang data dashboard:", err);
+      }
+    }, 5000);
+  }
+);
+onBeforeUnmount(() => clearTimeout(reloadTimer));
+
 const filteredSubmissions = computed(() => {
   const survey = selectedSurvey.value;
   if (!survey) return [];
-  const forSurvey = store.submissions.filter((s) => s.surveyId === survey.id);
-  if (isInternal.value) return capStakeholderVotes(forSurvey);
+  const counted = surveyRows.value.filter((s) => !s.uncounted);
+  if (isInternal.value) return counted;
   if (!selectedTanggal.value) return [];
-  return capStakeholderVotes(forSurvey.filter((s) => s.tanggal === selectedTanggal.value));
+  return counted.filter((s) => s.tanggal === selectedTanggal.value);
 });
 
 // Target and voting for a group of units; stakeholders count towards both with
