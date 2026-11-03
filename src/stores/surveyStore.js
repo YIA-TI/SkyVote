@@ -510,6 +510,37 @@ export const useSurveyStore = defineStore("survey", {
       return new Map(data.map((row) => [row.nama, row.jumlah]));
     },
 
+    // Map of nama -> submissions for one survey on one day (`tanggal`), or over the
+    // whole period when `tanggal` is empty (admin only).
+    async fetchPersonCounts(surveyId, tanggal) {
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .rpc(
+            "admin_person_counts",
+            { p_survey_id: surveyId, p_tanggal: tanggal || null },
+            { count: "exact" }
+          )
+          .range(from, to)
+      );
+      return new Map(data.map((row) => [row.nama, row.jumlah]));
+    },
+
+    // One person's submissions to one survey, oldest first (admin only) — for the
+    // Detail dialog, so it needs no copy of the whole table.
+    async fetchPersonSubmissions(surveyId, nama) {
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .from("submissions")
+          .select("*", { count: "exact" })
+          .eq("survey_id", surveyId)
+          .eq("nama", nama)
+          .order("tanggal")
+          .order("id")
+          .range(from, to)
+      );
+      return data.map(mapSubmission);
+    },
+
     // Total submissions per survey, for the survey lists.
     async fetchSubmissionTotals() {
       const { data, error } = await supabase.rpc("submission_counts_by_survey");

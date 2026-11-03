@@ -62,7 +62,9 @@ import { useSurveyStore } from "./stores/surveyStore";
 const store = useSurveyStore();
 const route = useRoute();
 
-onMounted(() => store.ensureBaseData());
+// Surveys and employees only: the fill counts come from the database per survey
+// and day (see EmployeeSurveyStatusTable).
+onMounted(() => store.ensureLightData());
 
 const departmentName = computed(() => decodeURIComponent(route.params.department ?? ""));
 

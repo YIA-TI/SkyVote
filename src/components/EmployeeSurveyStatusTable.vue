@@ -1,6 +1,8 @@
 <template>
   <div class="employee-status">
-    <div v-if="ready" class="toolbar">
+    <LoadingSpinner v-if="ready && countsLoading" />
+
+    <div v-if="ready && !countsLoading" class="toolbar">
       <div class="search-box">
         <svg class="search-icon" width="15" height="15" viewBox="0 0 20 20" fill="none">
           <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6" />
@@ -29,7 +31,7 @@
       </div>
     </div>
 
-    <template v-if="ready">
+    <template v-if="ready && !countsLoading">
       <div class="table-scroll">
         <table class="employee-table">
           <thead>
@@ -115,6 +117,7 @@
       </div>
     </template>
 
+    <p v-else-if="ready" hidden></p>
     <p v-else-if="survey" class="empty-state">Pilih tanggal untuk melihat status pengisian pegawai pada hari tersebut.</p>
     <p v-else class="empty-state">Pilih survei tertentu (bukan "Semua Survei") untuk melihat detail pengisian pegawai.</p>
 
@@ -134,7 +137,9 @@
             </button>
           </div>
 
-          <div v-if="detailRows.length === 0" class="detail-modal-loading">
+          <LoadingSpinner v-if="detailLoading" />
+          <div v-else-if="detailError" class="detail-modal-loading">{{ detailError }}</div>
+          <div v-else-if="detailRows.length === 0" class="detail-modal-loading">
             {{ quota.perDay ? "Periode survei belum dimulai." : "Pegawai ini belum mengisi survei." }}
           </div>
           <table v-else class="detail-table">
@@ -211,7 +216,8 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import LoadingSpinner from "./LoadingSpinner.vue";
 import { BUKTI_BUCKET, supabase } from "../lib/supabaseClient";
 import { pageItems } from "../lib/pagination";
 import { formatWibTime, wibToday } from "../lib/wib";
@@ -249,8 +255,52 @@ const survey = computed(() => (props.surveyId ? store.findSurvey(props.surveyId)
 const quota = computed(() => surveyQuota(survey.value));
 const ready = computed(() => !!survey.value && (!quota.value.perDay || !!props.tanggal));
 
+// Fill counts per person for the chosen survey (and day), summed by the database
+// (admin_person_counts) so the page never downloads the submissions themselves.
+const counts = ref(new Map());
+const countsLoading = ref(false);
+let countsRequest = 0;
+
+async function loadCounts({ quiet = false } = {}) {
+  const request = ++countsRequest;
+  if (!ready.value) {
+    counts.value = new Map();
+    countsLoading.value = false;
+    return;
+  }
+  if (!quiet) countsLoading.value = true;
+  try {
+    // An internal survey is once per period, so its counts span every day.
+    const map = await store.fetchPersonCounts(
+      props.surveyId,
+      quota.value.perDay ? props.tanggal : ""
+    );
+    if (request === countsRequest) counts.value = map;
+  } catch (err) {
+    console.error("Gagal memuat status pengisian:", err);
+  } finally {
+    if (request === countsRequest) countsLoading.value = false;
+  }
+}
+
+watch([() => props.surveyId, () => props.tanggal, ready], () => loadCounts(), { immediate: true });
+
+// New or removed submissions (realtime): reload quietly, at most every few seconds.
+let reloadTimer = null;
+watch(
+  () => store.submissionsVersion,
+  () => {
+    if (!ready.value || reloadTimer) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      loadCounts({ quiet: true });
+    }, 5000);
+  }
+);
+onBeforeUnmount(() => clearTimeout(reloadTimer));
+
 function fillCountFor(employee) {
-  return store.submissionCountForEmployeeSurvey(props.surveyId, employee.nama, props.tanggal);
+  return counts.value.get(employee.nama) ?? 0;
 }
 
 // What counts as "done" for this person: the survey's limit for Organik/TAD,
@@ -387,18 +437,37 @@ function dayBadgeLabel(row) {
   return `Mengisi ${row.dayCount}/${detailTarget.value}`;
 }
 
-function openDetail(employee) {
+const detailLoading = ref(false);
+const detailError = ref("");
+
+async function openDetail(employee) {
   if (!props.surveyId) return;
   detailEmployee.value = employee;
-  detailSubmissions.value = store.submissions
-    .filter((s) => s.surveyId === props.surveyId && s.nama === employee.nama)
-    .sort((a, b) => a.tanggal.localeCompare(b.tanggal) || String(a.createdAt).localeCompare(String(b.createdAt)));
+  detailSubmissions.value = [];
+  detailError.value = "";
+  detailLoading.value = true;
   expandedKey.value = null;
   imageUrls.value = {};
+  try {
+    // Only this person's rows for this survey, fetched when the dialog opens.
+    const rows = await store.fetchPersonSubmissions(props.surveyId, employee.nama);
+    // Ignore the answer if the dialog was closed or opened for someone else meanwhile.
+    if (detailEmployee.value === employee) {
+      detailSubmissions.value = rows.sort(
+        (a, b) => a.tanggal.localeCompare(b.tanggal) || String(a.createdAt).localeCompare(String(b.createdAt))
+      );
+    }
+  } catch (err) {
+    console.error("Gagal memuat detail pengisian:", err);
+    if (detailEmployee.value === employee) detailError.value = "Gagal memuat detail pengisian.";
+  } finally {
+    if (detailEmployee.value === employee) detailLoading.value = false;
+  }
 }
 
 function closeDetail() {
   detailEmployee.value = null;
+  detailLoading.value = false;
   detailSubmissions.value = [];
   expandedKey.value = null;
   imageUrls.value = {};
