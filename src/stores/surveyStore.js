@@ -483,6 +483,23 @@ export const useSurveyStore = defineStore("survey", {
       return expandCountRows(data, surveyId);
     },
 
+    // [{ tanggal, count }] sorted by day: how many submissions came in each day for
+    // one survey (admin only). Uses admin_report_counts, so no extra migration.
+    async fetchSurveyDailyCounts(surveyId) {
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .rpc("admin_report_counts", { p_survey_id: surveyId }, { count: "exact" })
+          .range(from, to)
+      );
+      const perDay = new Map();
+      for (const row of data) {
+        perDay.set(row.tanggal, (perDay.get(row.tanggal) ?? 0) + (row.jumlah_asli ?? row.jumlah));
+      }
+      return Array.from(perDay.entries())
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([tanggal, count]) => ({ tanggal, count }));
+    },
+
     // Map of nama -> number of submissions for one survey (admin only).
     async fetchVotesPerPerson(surveyId) {
       const data = await fetchAllRows((from, to) =>
@@ -782,7 +799,7 @@ export const useSurveyStore = defineStore("survey", {
         fetchAllRows((from, to) =>
           supabase
             .from("survey_answers")
-            .select("*", { count: "exact" })
+            .select("question_id, submission_id, pertanyaan, jawaban", { count: "exact" })
             .eq("survey_id", surveyId)
             .order("id")
             .range(from, to)
@@ -792,10 +809,25 @@ export const useSurveyStore = defineStore("survey", {
 
       const liveQuestionIds = new Set(questions.map((q) => q.id));
 
+      // One pass over the answers instead of one filter per question: by
+      // question id, and (for orphans) by question wording.
+      const byQuestionId = new Map();
+      const orphansByText = new Map();
+      for (const a of answers) {
+        if (liveQuestionIds.has(a.question_id)) {
+          if (!byQuestionId.has(a.question_id)) byQuestionId.set(a.question_id, []);
+          byQuestionId.get(a.question_id).push(a);
+        } else {
+          if (!orphansByText.has(a.pertanyaan)) orphansByText.set(a.pertanyaan, []);
+          orphansByText.get(a.pertanyaan).push(a);
+        }
+      }
+
       return questions.map((q) => {
-        const questionAnswers = answers.filter(
-          (a) => a.question_id === q.id || (!liveQuestionIds.has(a.question_id) && a.pertanyaan === q.pertanyaan)
-        );
+        const questionAnswers = [
+          ...(byQuestionId.get(q.id) ?? []),
+          ...(orphansByText.get(q.pertanyaan) ?? []),
+        ];
         // Distinct respondents, not raw answer rows: a "PilihanMulti" question
         // can produce several answer rows per submission (one per checked
         // option), so counting rows would inflate totalJawaban and skew %.

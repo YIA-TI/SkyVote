@@ -335,10 +335,20 @@ function lineAreaFor({ columns, baselineY }) {
   return `${line} L ${last.labelX} ${baselineY} L ${first.labelX} ${baselineY} Z`;
 }
 
+// Per-day submission counts (for the trend chart and the respondent total) come
+// from an aggregate RPC, so the submissions table itself is never downloaded.
+const dailyCounts = ref([]);
+
 onMounted(async () => {
-  await store.ensureBaseData();
   try {
-    results.value = await store.fetchSurveyResults(surveyId.value);
+    // Surveys + answers + daily counts load side by side.
+    const [, answerResults, daily] = await Promise.all([
+      store.ensureLightData(),
+      store.fetchSurveyResults(surveyId.value),
+      store.fetchSurveyDailyCounts(surveyId.value),
+    ]);
+    results.value = answerResults;
+    dailyCounts.value = daily;
   } catch (err) {
     toast.show("Gagal memuat hasil survei.", "error");
   } finally {
@@ -350,17 +360,9 @@ onMounted(async () => {
 // least one submission for this survey, count = how many submissions that
 // day. Single series, so per dataviz's job table ("trend over time" -> line,
 // one hue) — no legend needed, the card title already names what's plotted.
-const totalResponden = computed(() => store.submissionsBySurvey(surveyId.value).length);
+const totalResponden = computed(() => dailyCounts.value.reduce((sum, d) => sum + d.count, 0));
 
-const trendPoints = computed(() => {
-  const counts = new Map();
-  for (const s of store.submissionsBySurvey(surveyId.value)) {
-    counts.set(s.tanggal, (counts.get(s.tanggal) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([tanggal, count]) => ({ tanggal, count }));
-});
+const trendPoints = computed(() => dailyCounts.value);
 
 const CHART_W = 600;
 const CHART_H = 160;
