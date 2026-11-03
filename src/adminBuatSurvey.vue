@@ -393,7 +393,8 @@ function removeOption(questionIndex, optionIndex) {
 watch(
   editingId,
   async (id) => {
-    await store.ensureBaseData();
+    // Only the survey list is needed here, not the submissions or employees.
+    await store.ensureSurveys();
 
     if (id === null) {
       form.nama = "";

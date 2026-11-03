@@ -249,6 +249,7 @@ const LAST_SUBMISSION_KEY = "skyvote:lastSubmission";
 let baseDataPromise = null;
 let publicDataPromise = null;
 let lightDataPromise = null;
+let surveysPromise = null;
 
 function loadLastSubmission() {
   try {
@@ -278,6 +279,7 @@ export const useSurveyStore = defineStore("survey", {
     lastSubmission: loadLastSubmission(),
     baseDataLoaded: false,
     lightDataLoaded: false,
+    surveysLoaded: false,
     publicDataLoaded: false,
     // Total submissions per survey id (fetchSubmissionTotals) and a counter that
     // goes up whenever a submission is added or removed, so screens built from
@@ -625,6 +627,19 @@ export const useSurveyStore = defineStore("survey", {
         lightDataPromise = null;
       });
       return lightDataPromise;
+    },
+
+    // Just the survey list, for pages that need nothing else (e.g. the survey form).
+    async ensureSurveys() {
+      if (this.surveysLoaded || this.lightDataLoaded || this.baseDataLoaded) return;
+      surveysPromise ??= this.fetchSurveys()
+        .then(() => {
+          this.surveysLoaded = true;
+        })
+        .finally(() => {
+          surveysPromise = null;
+        });
+      return surveysPromise;
     },
 
     async loadLightData() {
