@@ -150,6 +150,9 @@
               <template v-else-if="quota.perDay">
                 Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ quota.limit }}
                 pada tanggal ini
+                <template v-if="quota.catchUp > 0">
+                  (termasuk {{ quota.catchUp }} untuk mengejar hutang pengisian)
+                </template>
               </template>
               <template v-else>
                 Survei internal hanya bisa diisi {{ quota.limit }} kali selama periode survei. Anda sudah
@@ -446,6 +449,9 @@ const tanggalLabel = computed(() =>
 // (survey, employee, date) comes from an RPC. Re-fetched whenever any of the
 // three change; `latestCountRequest` drops responses that arrive out of order.
 const serverCount = ref(null);
+// The day's limit from the database: the normal one, plus on a Saturday / Sunday
+// whatever the person still owes (weekend catch-up).
+const serverLimit = ref(null);
 let latestCountRequest = 0;
 
 watch(
@@ -453,18 +459,31 @@ watch(
   async ([surveyId, employee, tanggal]) => {
     const request = ++latestCountRequest;
     serverCount.value = null;
+    serverLimit.value = null;
     if (!surveyId || !employee || !tanggal) return;
-    const count = await store.fetchEmployeeDayCount(surveyId, employee.nama, tanggal);
-    if (request === latestCountRequest) serverCount.value = count;
+    const [count, limit] = await Promise.all([
+      store.fetchEmployeeDayCount(surveyId, employee.nama, tanggal),
+      store.fetchEmployeeDayLimit(surveyId, employee.nama, tanggal),
+    ]);
+    if (request === latestCountRequest) {
+      serverCount.value = count;
+      serverLimit.value = limit;
+    }
   },
   { immediate: true }
 );
 
-// External surveys: maxPengisian per day (counted for the date above).
+// External surveys: maxPengisian per day (counted for the date above), plus the
+// owed votes on a Saturday / Sunday (`catchUp` = how many extra today).
 // Internal surveys: once for the whole period (every date counts).
 // Stakeholders (external surveys): target 100 a day, but they may submit up to the
 // daily ceiling (`limit`); only the target is counted in the reports.
-const quota = computed(() => surveyQuota(selectedSurvey.value, selectedEmployee.value));
+const quota = computed(() => {
+  const base = surveyQuota(selectedSurvey.value, selectedEmployee.value);
+  if (!base.perDay || base.stakeholder || serverLimit.value === null) return base;
+  const limit = Math.max(base.limit, serverLimit.value);
+  return { ...base, limit, catchUp: limit - base.limit };
+});
 
 // The local cache only has data in an admin session, so take whichever is higher.
 const employeeSubmissionCount = computed(() => {

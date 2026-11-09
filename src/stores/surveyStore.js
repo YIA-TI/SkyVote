@@ -443,6 +443,23 @@ export const useSurveyStore = defineStore("survey", {
       return Number(data) || 0;
     },
 
+    // How many submissions this person may make on this day: the survey's daily
+    // limit, plus on a Saturday / Sunday whatever they still owe (migration 039).
+    // Returns null if the lookup fails (the form then uses the plain limit; the
+    // database still enforces the real one).
+    async fetchEmployeeDayLimit(surveyId, nama, tanggal) {
+      const { data, error } = await supabase.rpc("employee_day_limit", {
+        p_survey_id: surveyId,
+        p_nama: nama,
+        p_tanggal: tanggal,
+      });
+      if (error) {
+        console.warn("employee_day_limit failed:", error.message);
+        return null;
+      }
+      return typeof data === "number" ? data : null;
+    },
+
     // ── Public report page /report (no login) ───────────────────────
     // Backed by narrow RPCs that only return aggregate numbers (see 027
     // migration); they return data directly instead of touching
