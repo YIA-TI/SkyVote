@@ -225,11 +225,24 @@ function mapEmployee(row) {
     // employeesOn in lib/participation.js. Not used for Organik / TAD.
     targetMulai: row.target_mulai ?? wibDateOf(row.created_at),
     targetSelesai: row.target_selesai ?? "",
+    // May submit without a daily limit on Saturdays and Sundays (up to
+    // WEEKEND_UNLIMITED_CEILING); see migration 040. Organik / TAD only.
+    weekendUnlimited: row.weekend_unlimited ?? false,
   };
 }
 
-function toEmployeeRow({ nip, nama, unitKerja, jenisPegawai, targetMulai, targetSelesai }) {
+function toEmployeeRow({
+  nip,
+  nama,
+  unitKerja,
+  jenisPegawai,
+  targetMulai,
+  targetSelesai,
+  weekendUnlimited,
+  weekendUnlimitedWas,
+}) {
   const stakeholder = jenisPegawai === STAKEHOLDER_JENIS;
+  const unlimited = !stakeholder && !!weekendUnlimited;
   return {
     nip: nip ? nip.trim() : null,
     nama: nama.trim(),
@@ -238,6 +251,9 @@ function toEmployeeRow({ nip, nama, unitKerja, jenisPegawai, targetMulai, target
     // The target window only exists for stakeholders.
     target_mulai: stakeholder ? targetMulai || null : null,
     target_selesai: stakeholder ? targetSelesai || null : null,
+    // Only sent when it is (or was) on, so saving an ordinary employee keeps
+    // working even before the column exists.
+    ...(unlimited || weekendUnlimitedWas ? { weekend_unlimited: unlimited } : {}),
   };
 }
 

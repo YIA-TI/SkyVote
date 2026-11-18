@@ -417,6 +417,10 @@
             dihitung paling banyak {{ STAKEHOLDER_DAILY_TARGET }} per orang per hari (sama dengan
             targetnya), jadi persentase per orang maksimal 100%.
           </p>
+          <p v-if="weekendExtraVotes > 0" class="rank-note">
+            Akses akhir pekan tanpa batas: <strong>{{ weekendExtraVotes }}</strong> vote melebihi
+            batas harian biasa tampil di kolom Voting, tetapi tidak dihitung untuk Gap dan persentase.
+          </p>
 
           <div class="pagination">
             <span class="pagination-label">
@@ -895,6 +899,13 @@ const stakeholderVotes = computed(() => {
   const stakeholders = deptSubmissions.value.filter((s) => s.jenisPegawai === STAKEHOLDER_JENIS);
   return { raw: stakeholders.length, counted: stakeholders.filter((s) => !s.uncounted).length };
 });
+
+// Organik / TAD votes that are shown but not counted: an employee with weekend
+// unlimited access, over the normal daily limit on a Saturday or Sunday.
+const weekendExtraVotes = computed(
+  () =>
+    deptSubmissions.value.filter((s) => s.jenisPegawai !== STAKEHOLDER_JENIS && s.uncounted).length
+);
 
 // Every day of the survey's period up to today (or its end), so the per-Tanggal
 // table also lists days with zero submissions — each day carries its own

@@ -147,6 +147,10 @@
                 Stakeholder: Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }}
                 pada tanggal ini (target {{ quota.target }}, maksimal {{ quota.limit }} per hari)
               </template>
+              <template v-else-if="quota.unlimited">
+                Akhir pekan: Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }}
+                pada tanggal ini (tanpa batas harian, maksimal {{ quota.limit }})
+              </template>
               <template v-else-if="quota.perDay">
                 Anda sudah mengisi survei sebanyak {{ employeeSubmissionCount }} / {{ quota.limit }}
                 pada tanggal ini
@@ -289,6 +293,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router";
 import AppHeader from "./components/AppHeader.vue";
 import { optionLabel } from "./lib/optionLabel";
+import { WEEKEND_UNLIMITED_CEILING } from "./lib/participation";
 import { surveyQuota, useSurveyStore } from "./stores/surveyStore";
 import { wibToday } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
@@ -482,7 +487,12 @@ const quota = computed(() => {
   const base = surveyQuota(selectedSurvey.value, selectedEmployee.value);
   if (!base.perDay || base.stakeholder || serverLimit.value === null) return base;
   const limit = Math.max(base.limit, serverLimit.value);
-  return { ...base, limit, catchUp: limit - base.limit };
+  // Weekend-unlimited employee: the database returns the safety ceiling.
+  const unlimited =
+    !!selectedEmployee.value?.weekendUnlimited &&
+    limit >= WEEKEND_UNLIMITED_CEILING &&
+    limit > base.limit;
+  return { ...base, limit, catchUp: unlimited ? 0 : limit - base.limit, unlimited };
 });
 
 // The local cache only has data in an admin session, so take whichever is higher.

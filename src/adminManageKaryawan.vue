@@ -261,6 +261,24 @@
                 otomatis hari itu. Menonaktifkan akun tidak menghapus target pada hari-hari yang sudah lewat.
               </p>
 
+              <!-- Organik / TAD only: no daily limit on Saturdays and Sundays. -->
+              <div v-if="!isStakeholderForm" class="field">
+                <label class="checkbox-row" for="karyawan-weekend-unlimited">
+                  <input
+                    id="karyawan-weekend-unlimited"
+                    v-model="form.weekendUnlimited"
+                    type="checkbox"
+                  />
+                  <span>Akses upload tanpa batas di akhir pekan</span>
+                </label>
+                <p class="field-helper">
+                  Pada hari Sabtu dan Minggu pegawai ini boleh mengunggah tanpa batas harian (maksimal
+                  {{ WEEKEND_UNLIMITED_CEILING }} per hari). Di laporan, kelebihannya tetap tampil di
+                  kolom Voting, tetapi yang dihitung untuk persentase dan Gap paling banyak sebesar
+                  batas harian biasa. Hari kerja tidak berubah.
+                </p>
+              </div>
+
               <div class="form-footer">
                 <button type="button" class="confirm-btn confirm-btn-secondary" @click="closeForm">Batal</button>
                 <button type="submit" class="confirm-btn confirm-btn-primary" :disabled="saving">
@@ -295,6 +313,7 @@ import {
   STAKEHOLDER_DAILY_CEILING,
   STAKEHOLDER_DAILY_TARGET,
   STAKEHOLDER_JENIS,
+  WEEKEND_UNLIMITED_CEILING,
 } from "./lib/participation";
 import { wibToday } from "./lib/wib";
 import { ORG_STRUCTURE, STAKEHOLDER_UNIT, shortDeptName } from "./orgStructure.js";
@@ -350,6 +369,9 @@ const form = reactive({
   // Stakeholders only: the days their target counts (see lib/participation.js).
   targetMulai: "",
   targetSelesai: "",
+  // Organik / TAD only: no daily limit on Saturdays and Sundays (max 1000 a day).
+  weekendUnlimited: false,
+  weekendUnlimitedWas: false, // the value when the form was opened
 });
 
 // A stakeholder always sits in the "Stakeholders" unit (the reports and the
@@ -402,6 +424,8 @@ function resetForm() {
   form.jenisPegawai = "Organik";
   form.targetMulai = wibToday(); // a new stakeholder's target starts today...
   form.targetSelesai = ""; // ...with no end date unless one is set
+  form.weekendUnlimited = false;
+  form.weekendUnlimitedWas = false;
 }
 
 function openAddForm() {
@@ -418,6 +442,8 @@ function openEditForm(employee) {
   form.jenisPegawai = employee.jenisPegawai;
   form.targetMulai = employee.targetMulai || wibToday();
   form.targetSelesai = employee.targetSelesai || "";
+  form.weekendUnlimited = !!employee.weekendUnlimited;
+  form.weekendUnlimitedWas = !!employee.weekendUnlimited;
   original.nama = employee.nama;
   original.unitKerja = employee.unitKerja;
   original.jenisPegawai = employee.jenisPegawai;
@@ -691,6 +717,23 @@ async function reactivate(employee) {
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-muted);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
 }
 
 .row-actions {
