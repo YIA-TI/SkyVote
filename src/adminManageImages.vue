@@ -69,9 +69,26 @@
         </div>
 
         <button
+          v-if="!downloading"
+          type="button"
+          class="download-button"
+          :disabled="!selectedSurveyId || deletingAll || filteredSubmissions.length === 0"
+          :title="!selectedSurveyId ? 'Pilih satu survei terlebih dahulu' : 'Unduh foto bukti yang sedang tampil sebagai file ZIP'"
+          @click="downloadEvidence"
+        >
+          Unduh Bukti (ZIP)
+        </button>
+        <template v-else>
+          <span class="download-progress" role="status">
+            Mengunduh {{ downloadProgress.done }}/{{ downloadProgress.total }} foto...
+          </span>
+          <button type="button" class="download-cancel" @click="cancelDownload">Batal</button>
+        </template>
+
+        <button
           type="button"
           class="delete-all-button"
-          :disabled="!selectedSurveyId || deletingAll || filteredSubmissions.length === 0"
+          :disabled="!selectedSurveyId || deletingAll || downloading || filteredSubmissions.length === 0"
           :title="!selectedSurveyId ? 'Pilih satu survei terlebih dahulu' : ''"
           @click="openDeleteAllConfirm"
         >
@@ -185,6 +202,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import { BUKTI_BUCKET, supabase } from "./lib/supabaseClient";
 import { pageItems } from "./lib/pagination";
+import { createZip } from "./lib/zip";
 import { formatWibTime } from "./lib/wib";
 import { shortDeptName } from "./orgStructure";
 import { useSurveyStore } from "./stores/surveyStore";
@@ -292,6 +310,148 @@ async function toggleImage(submission) {
     }
   }
   imageLoadingId.value = null;
+}
+
+// ── Download the proof photos of what is shown (survey + dates + name) as ZIP ──
+// Photos are fetched a few at a time and packed into archives of about
+// PART_BYTES each (a big period becomes several files: "bagian-1", "bagian-2"...)
+// so the browser never has to hold everything in memory. Inside: tanggal / nama /
+// <id>-bukti.jpg (and <id>-bukti-tambahan.jpg for the optional second photo).
+const PART_BYTES = 150 * 1024 * 1024;
+const DOWNLOAD_PARALLEL = 4;
+
+const downloading = ref(false);
+const downloadProgress = ref({ done: 0, total: 0 });
+let cancelRequested = false;
+
+function cancelDownload() {
+  cancelRequested = true;
+}
+
+const safeName = (text) =>
+  String(text)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80) || "tanpa-nama";
+
+function fileExtension(path) {
+  const match = /\.([A-Za-z0-9]{1,5})$/.exec(path);
+  return match ? match[1].toLowerCase() : "jpg";
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function downloadEvidence() {
+  if (!selectedSurveyId.value || downloading.value) return;
+
+  // Newest first on screen; the archive is ordered by day, then name.
+  const subs = [...filteredSubmissions.value].sort(
+    (a, b) => a.tanggal.localeCompare(b.tanggal) || a.nama.localeCompare(b.nama, "id") || a.id - b.id
+  );
+  const files = subs.flatMap((sub) =>
+    [
+      { path: sub.fileBukti, label: "bukti" },
+      { path: sub.fileBukti2, label: "bukti-tambahan" },
+    ]
+      .filter((f) => f.path)
+      .map((f) => ({
+        path: f.path,
+        zipName: `${sub.tanggal}/${safeName(sub.nama)}/${sub.id}-${f.label}.${fileExtension(f.path)}`,
+      }))
+  );
+
+  if (files.length === 0) {
+    toast.show("Tidak ada foto bukti pada data yang sedang tampil.", "info");
+    return;
+  }
+
+  const surveyLabel = safeName(selectedSurvey.value?.nama ?? "survei");
+  const range = `${tanggalDari.value || "awal"}_${tanggalSampai.value || "akhir"}`;
+
+  downloading.value = true;
+  cancelRequested = false;
+  downloadProgress.value = { done: 0, total: files.length };
+
+  const failed = [];
+  let entries = [];
+  let partBytes = 0;
+  let partNumber = 0;
+  let saved = 0;
+
+  function flushPart(extraEntries = []) {
+    if (entries.length === 0 && extraEntries.length === 0) return;
+    partNumber++;
+    saveBlob(createZip([...entries, ...extraEntries]), `bukti-${surveyLabel}-${range}-bagian-${partNumber}.zip`);
+    saved += entries.length;
+    entries = [];
+    partBytes = 0;
+  }
+
+  try {
+    let next = 0;
+    // Photos are taken in order, but the workers run side by side; a finished photo
+    // is added to the current part as it arrives.
+    async function worker() {
+      while (next < files.length && !cancelRequested) {
+        const file = files[next++];
+        try {
+          const { data, error } = await supabase.storage.from(BUKTI_BUCKET).download(file.path);
+          if (error || !data) throw error ?? new Error("kosong");
+          const bytes = new Uint8Array(await data.arrayBuffer());
+          entries.push({ name: file.zipName, data: bytes });
+          partBytes += bytes.length;
+          if (partBytes >= PART_BYTES) {
+            flushPart();
+            await pause(600); // let the browser start the previous file first
+          }
+        } catch {
+          failed.push(file.zipName);
+        }
+        downloadProgress.value = { ...downloadProgress.value, done: downloadProgress.value.done + 1 };
+      }
+    }
+    await Promise.all(Array.from({ length: DOWNLOAD_PARALLEL }, worker));
+
+    const report = failed.length
+      ? [
+          {
+            name: "gagal-diunduh.txt",
+            data: new TextEncoder().encode(
+              `Foto yang gagal diunduh (${failed.length}):\n${failed.join("\n")}\n`
+            ),
+          },
+        ]
+      : [];
+    flushPart(report);
+
+    if (cancelRequested) {
+      toast.show(`Dibatalkan. ${saved} foto sudah diunduh.`, "info");
+    } else if (failed.length) {
+      toast.show(`${saved} foto diunduh, ${failed.length} gagal (daftarnya ada di gagal-diunduh.txt).`, "info");
+    } else {
+      toast.show(
+        `${saved} foto diunduh dalam ${partNumber} file ZIP.`,
+        "success"
+      );
+    }
+  } catch (err) {
+    toast.show(err.message || "Gagal mengunduh foto.", "error");
+  } finally {
+    downloading.value = false;
+    cancelRequested = false;
+  }
 }
 
 const deletingAll = ref(false);
@@ -540,6 +700,42 @@ async function performDeleteAll() {
   cursor: not-allowed;
 }
 
+.download-button,
+.download-cancel {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.download-button:hover:not(:disabled),
+.download-cancel:hover {
+  background-color: rgba(0, 93, 172, 0.08);
+}
+
+.download-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.download-progress {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--color-border);
@@ -738,7 +934,8 @@ async function performDeleteAll() {
     flex-basis: 100%;
   }
 
-  .delete-all-button {
+  .delete-all-button,
+  .download-button {
     width: 100%;
   }
 }
