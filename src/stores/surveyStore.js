@@ -69,6 +69,17 @@ async function fetchAllRows(buildQuery, pageSize = 1000) {
   return rows;
 }
 
+// Narrows a submissions query by survey, an inclusive date range and part of a
+// name (all optional). Used by the Hapus Data page.
+function applySubmissionFilter(query, { surveyId, dari, sampai, term } = {}) {
+  if (surveyId) query = query.eq("survey_id", surveyId);
+  if (dari) query = query.gte("tanggal", dari);
+  if (sampai) query = query.lte("tanggal", sampai);
+  const name = (term ?? "").trim();
+  if (name) query = query.ilike("nama", `%${name.replace(/[\\%_]/g, "\\$&")}%`);
+  return query;
+}
+
 // Turns aggregate rows (tanggal / departemen / jenis with jumlah and jumlah_asli)
 // into submission-shaped rows without any personal data, so the reports can use
 // the same grouping code as for real submissions. The first `jumlah` rows of a
@@ -555,6 +566,34 @@ export const useSurveyStore = defineStore("survey", {
           .eq("nama", nama)
           .order("tanggal")
           .order("id")
+          .range(from, to)
+      );
+      return data.map(mapSubmission);
+    },
+
+    // ── Hapus Data page: filtered, paged straight from the database ───────────
+    // `filter`: { surveyId, dari, sampai, term } (all optional; dates inclusive).
+    // One page of submissions (newest first) plus how many match in total.
+    async fetchSubmissionsPage(filter, from, to) {
+      const { data, error, count } = await applySubmissionFilter(
+        supabase.from("submissions").select("*", { count: "exact" }),
+        filter
+      )
+        .order("id", { ascending: false })
+        .range(from, to);
+      if (error) throw new Error(error.message);
+      return { rows: data.map(mapSubmission), count: count ?? data.length };
+    },
+
+    // Every submission that matches, for "download all" and "delete all" (paged
+    // internally, so it is not capped at 1000).
+    async fetchSubmissionsMatching(filter) {
+      const data = await fetchAllRows((from, to) =>
+        applySubmissionFilter(
+          supabase.from("submissions").select("*", { count: "exact" }),
+          filter
+        )
+          .order("id", { ascending: false })
           .range(from, to)
       );
       return data.map(mapSubmission);

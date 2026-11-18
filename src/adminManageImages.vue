@@ -72,7 +72,7 @@
           v-if="!downloading"
           type="button"
           class="download-button"
-          :disabled="!selectedSurveyId || deletingAll || filteredSubmissions.length === 0"
+          :disabled="!selectedSurveyId || deletingAll || totalCount === 0 || preparing"
           :title="!selectedSurveyId ? 'Pilih satu survei terlebih dahulu' : 'Unduh foto bukti yang sedang tampil sebagai file ZIP'"
           @click="downloadEvidence"
         >
@@ -88,7 +88,7 @@
         <button
           type="button"
           class="delete-all-button"
-          :disabled="!selectedSurveyId || deletingAll || downloading || filteredSubmissions.length === 0"
+          :disabled="!selectedSurveyId || deletingAll || downloading || totalCount === 0 || preparing"
           :title="!selectedSurveyId ? 'Pilih satu survei terlebih dahulu' : ''"
           @click="openDeleteAllConfirm"
         >
@@ -96,7 +96,7 @@
             deletingAll
               ? "Menghapus..."
               : selectedSurveyId
-              ? `Hapus Data (${filteredSubmissions.length})`
+              ? `Hapus Data (${totalCount})`
               : "Hapus Data"
           }}
         </button>
@@ -147,7 +147,13 @@
                 </td>
               </tr>
             </template>
-            <tr v-if="filteredSubmissions.length === 0">
+            <tr v-if="listLoading && pagedSubmissions.length === 0">
+              <td colspan="7" class="empty-row"><LoadingSpinner /></td>
+            </tr>
+            <tr v-else-if="listError">
+              <td colspan="7" class="empty-row">{{ listError }}</td>
+            </tr>
+            <tr v-else-if="totalCount === 0">
               <td colspan="7" class="empty-row">Tidak ada submission yang cocok.</td>
             </tr>
           </tbody>
@@ -156,8 +162,8 @@
 
       <div class="pagination">
         <span class="pagination-label">
-          Menampilkan {{ filteredSubmissions.length === 0 ? 0 : pageStart + 1 }}-{{ pageEnd }} dari
-          {{ filteredSubmissions.length }} submission
+          Menampilkan {{ totalCount === 0 ? 0 : pageStart + 1 }}-{{ pageEnd }} dari
+          {{ totalCount }} submission
         </span>
         <div class="pager" v-if="totalPages > 1">
           <button class="pager-arrow" type="button" :disabled="page === 1" @click="page--">
@@ -198,8 +204,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import LoadingSpinner from "./components/LoadingSpinner.vue";
 import { BUKTI_BUCKET, supabase } from "./lib/supabaseClient";
 import { pageItems } from "./lib/pagination";
 import { createZip } from "./lib/zip";
@@ -211,7 +218,9 @@ import { useToastStore } from "./stores/toastStore";
 const store = useSurveyStore();
 const toast = useToastStore();
 
-onMounted(() => store.ensureBaseData());
+// Only the survey list is loaded up front; the rows shown (and counted, deleted,
+// downloaded) are queried from the database with the current filters.
+onMounted(() => store.ensureSurveys());
 
 function formatTanggal(isoDate) {
   const [year, month, day] = isoDate.split("-");
@@ -243,33 +252,84 @@ function submissionTime(sub) {
   return formatWibTime(sub.createdAt);
 }
 
-const filteredSubmissions = computed(() => {
-  let list = [...store.submissions].sort((a, b) => b.id - a.id);
+// The table shows one page at a time, queried from the database with the current
+// filters; `totalCount` is how many rows match in all.
+const pagedSubmissions = ref([]);
+const totalCount = ref(0);
+const listLoading = ref(true);
+const listError = ref("");
+let listRequest = 0;
 
-  if (selectedSurveyId.value) {
-    list = list.filter((s) => s.surveyId === selectedSurveyId.value);
-  }
-
-  if (tanggalDari.value) list = list.filter((s) => s.tanggal >= tanggalDari.value);
-  if (tanggalSampai.value) list = list.filter((s) => s.tanggal <= tanggalSampai.value);
-
-  const term = search.value.trim().toLowerCase();
-  if (term) {
-    list = list.filter((s) => s.nama.toLowerCase().includes(term));
-  }
-
-  return list;
+const currentFilter = () => ({
+  surveyId: selectedSurveyId.value,
+  dari: tanggalDari.value,
+  sampai: tanggalSampai.value,
+  term: search.value,
 });
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredSubmissions.value.length / pageSize)));
+async function loadPage() {
+  const request = ++listRequest;
+  listLoading.value = true;
+  listError.value = "";
+  try {
+    const from = (page.value - 1) * pageSize;
+    const { rows, count } = await store.fetchSubmissionsPage(currentFilter(), from, from + pageSize - 1);
+    if (request !== listRequest) return;
+    // A page past the end (rows were deleted meanwhile): go back to the last one.
+    if (rows.length === 0 && count > 0 && page.value > 1) {
+      page.value = Math.max(1, Math.ceil(count / pageSize));
+      return;
+    }
+    pagedSubmissions.value = rows;
+    totalCount.value = count;
+  } catch (err) {
+    if (request !== listRequest) return;
+    console.error("Gagal memuat data:", err);
+    pagedSubmissions.value = [];
+    totalCount.value = 0;
+    listError.value = err.message || "Gagal memuat data.";
+  } finally {
+    if (request === listRequest) listLoading.value = false;
+  }
+}
 
-watch([search, selectedSurveyId, filteredSubmissions], () => {
-  if (page.value > totalPages.value) page.value = totalPages.value;
+// A changed filter starts again from page 1.
+function applyFilters() {
+  expandedId.value = null;
+  if (page.value !== 1) page.value = 1;
+  else loadPage();
+}
+
+let searchTimer = null;
+watch(search, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(applyFilters, 300);
+});
+watch([selectedSurveyId, tanggalDari, tanggalSampai], applyFilters);
+watch(page, loadPage);
+onMounted(loadPage);
+
+// New or removed submissions (realtime): refresh the page quietly, at most every
+// few seconds. Skipped while the admin is working on a row.
+let reloadTimer = null;
+watch(
+  () => store.submissionsVersion,
+  () => {
+    if (reloadTimer) return;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      if (!downloading.value && !deletingAll.value) loadPage();
+    }, 5000);
+  }
+);
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer);
+  clearTimeout(reloadTimer);
 });
 
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize)));
 const pageStart = computed(() => (page.value - 1) * pageSize);
-const pageEnd = computed(() => Math.min(pageStart.value + pageSize, filteredSubmissions.value.length));
-const pagedSubmissions = computed(() => filteredSubmissions.value.slice(pageStart.value, pageEnd.value));
+const pageEnd = computed(() => pageStart.value + pagedSubmissions.value.length);
 
 const expandedId = ref(null);
 const imageUrls = ref({});
@@ -321,6 +381,8 @@ const PART_BYTES = 150 * 1024 * 1024;
 const DOWNLOAD_PARALLEL = 4;
 
 const downloading = ref(false);
+// True while the rows for a download / delete are being collected.
+const preparing = ref(false);
 const downloadProgress = ref({ done: 0, total: 0 });
 let cancelRequested = false;
 
@@ -356,8 +418,19 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function downloadEvidence() {
   if (!selectedSurveyId.value || downloading.value) return;
 
-  // Newest first on screen; the archive is ordered by day, then name.
-  const subs = [...filteredSubmissions.value].sort(
+  // Everything that matches the filters (not just the page on screen), ordered by
+  // day, then name, for the archive.
+  let matching;
+  preparing.value = true;
+  try {
+    matching = await store.fetchSubmissionsMatching(currentFilter());
+  } catch (err) {
+    toast.show(err.message || "Gagal menyiapkan unduhan.", "error");
+    return;
+  } finally {
+    preparing.value = false;
+  }
+  const subs = matching.sort(
     (a, b) => a.tanggal.localeCompare(b.tanggal) || a.nama.localeCompare(b.nama, "id") || a.id - b.id
   );
   const files = subs.flatMap((sub) =>
@@ -493,15 +566,29 @@ function cancelDeleteAll() {
   pendingDelete.value = [];
 }
 
-function openDeleteAllConfirm() {
-  if (!selectedSurveyId.value) return;
+async function openDeleteAllConfirm() {
+  if (!selectedSurveyId.value || preparing.value) return;
 
-  if (filteredSubmissions.value.length === 0) {
+  if (totalCount.value === 0) {
     toast.show("Tidak ada data yang tampil untuk dihapus.", "info");
     return;
   }
 
-  pendingDelete.value = [...filteredSubmissions.value];
+  // Everything that matches the filters, collected now so the dialog (and the
+  // delete) work on a fixed set even if the table changes while it is open.
+  preparing.value = true;
+  try {
+    pendingDelete.value = await store.fetchSubmissionsMatching(currentFilter());
+  } catch (err) {
+    toast.show(err.message || "Gagal menyiapkan data yang akan dihapus.", "error");
+    return;
+  } finally {
+    preparing.value = false;
+  }
+  if (pendingDelete.value.length === 0) {
+    toast.show("Tidak ada data yang tampil untuk dihapus.", "info");
+    return;
+  }
   pendingScope.value = describeScope();
   showDeleteAllConfirm.value = true;
 }
@@ -520,6 +607,8 @@ async function performDeleteAll() {
     toast.show(err.message || "Gagal menghapus data.", "error");
   } finally {
     deletingAll.value = false;
+    // Show what is left (also after a partial failure).
+    loadPage();
   }
 }
 </script>
